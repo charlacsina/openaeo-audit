@@ -1,0 +1,46 @@
+{
+  "name": "openaeo-audit",
+  "version": "1.0.0",
+  "description": "Quick AEO/GEO audit — check whether your site is retrievable and citable by AI answer engines (ChatGPT, Claude, Gemini, Perplexity). Zero dependencies.",
+  "keywords": [
+    "aeo",
+    "geo",
+    "answer-engine-optimization",
+    "generative-engine-optimization",
+    "ai-seo",
+    "llm-seo",
+    "chatgpt",
+    "perplexity",
+    "seo",
+    "llms-txt",
+    "schema",
+    "audit",
+    "cli"
+  ],
+  "homepage": "https://openaeo.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/charlacsina/openaeo-audit"
+  },
+  "bugs": {
+    "url": "https://github.com/charlacsina/openaeo-audit/issues"
+  },
+  "license": "MIT",
+  "type": "commonjs",
+  "main": "src/audit.js",
+  "bin": {
+    "openaeo-audit": "bin/cli.js"
+  },
+  "files": [
+    "src",
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "audit": "node bin/cli.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
