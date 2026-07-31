@@ -6,6 +6,10 @@
 
 const { audit, remediationPlan } = require("../src/audit");
 
+// `openaeo-audit mcp` starts the MCP server for Cursor / Claude Code.
+// Hand off before any stdout writing — MCP owns stdout for JSON-RPC.
+if (process.argv[2] === "mcp") { require("./mcp.js"); return; }
+
 const args = process.argv.slice(2);
 const asJson = args.includes("--json");
 const url = args.find(a => !a.startsWith("-"));

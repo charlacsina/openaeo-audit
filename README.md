@@ -122,6 +122,46 @@ score=$(npx openaeo-audit yoursite.com --json | node -e "process.stdin.on('data'
 
 ---
 
+## Use it from Cursor or Claude Code (MCP)
+
+OpenAEO ships an [MCP](https://modelcontextprotocol.io) server, so your AI coding agent can audit
+your site and **apply the fixes to your actual files** — with you reviewing every edit. Nothing is
+uploaded, no account needed, and it never touches production.
+
+**Cursor** — add to `~/.cursor/mcp.json` (or `.cursor/mcp.json` in a project):
+
+```json
+{
+  "mcpServers": {
+    "openaeo": { "command": "npx", "args": ["-y", "openaeo-audit", "mcp"] }
+  }
+}
+```
+
+**Claude Code** — add to `.mcp.json` in your project root (same shape), or run:
+
+```bash
+claude mcp add openaeo -- npx -y openaeo-audit mcp
+```
+
+Then just ask:
+
+> *"Audit example.com and fix my site."*
+
+The agent will run the audit, write `robots.txt` and `llms.txt`, inject the JSON-LD into your
+`<head>`, and re-check its work.
+
+### Tools it exposes
+
+| Tool | What it does |
+|---|---|
+| `aeo_audit` | Audits a live domain — score, band, every check, prioritised fixes |
+| `aeo_fix_files` | Generates paste-ready `robots.txt`, `llms.txt`, JSON-LD, and an opening paragraph |
+| `aeo_fix_html` | Takes a page's HTML, returns it with `<title>`, meta description and JSON-LD injected — **only adds what's missing, never rewrites your content** |
+| `aeo_check_html` | Scores HTML without changing it, to verify the edits worked |
+
+---
+
 ## Requirements
 
 - **Node.js 18+** (uses the built-in `fetch`)
