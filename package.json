@@ -20,7 +20,7 @@
   "homepage": "https://openaeo.dev",
   "repository": {
     "type": "git",
-    "url": "https://github.com/charlacsina/openaeo-audit"
+    "url": "git+https://github.com/charlacsina/openaeo-audit.git"
   },
   "bugs": {
     "url": "https://github.com/charlacsina/openaeo-audit/issues"
