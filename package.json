@@ -36,7 +36,8 @@
     "src",
     "bin",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "examples"
   ],
   "scripts": {
     "audit": "node bin/cli.js"

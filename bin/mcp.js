@@ -124,10 +124,27 @@ async function handle(msg) {
       protocolVersion: PROTOCOL,
       capabilities: { tools: {} },
       serverInfo: SERVER,
-      instructions:
-        "OpenAEO audits websites for AI-search (AEO/GEO) visibility and generates the fixes. "
-        + "Typical flow: aeo_audit a domain, then aeo_fix_files to write robots.txt/llms.txt/JSON-LD, "
-        + "and aeo_fix_html on individual pages. Verify with aeo_check_html.",
+      instructions: [
+        "OpenAEO audits a website for AI-search visibility (AEO/GEO) — whether ChatGPT, Claude,",
+        "Gemini and Perplexity can read, trust and cite it — and generates the fixes.",
+        "",
+        "Workflow when the user asks you to improve their AI-search visibility:",
+        "1. aeo_audit their domain. Report the score, the band, and which checks failed.",
+        "2. aeo_fix_files to generate robots.txt, llms.txt and JSON-LD. Write robots.txt and",
+        "   llms.txt into the site's public/static root (e.g. public/, static/, or the repo root).",
+        "3. aeo_fix_html on each key page's HTML, then write `fixedHtml` back to the file.",
+        "4. aeo_check_html to verify, and re-run aeo_audit after deploying to confirm the score moved.",
+        "",
+        "Rules:",
+        "- Generated files contain [bracketed] placeholders. NEVER invent values for them —",
+        "  no fake prices, review counts, founding years, addresses or social URLs. Ask the user",
+        "  for the real numbers, or leave the brackets in place for them to fill.",
+        "- aeo_fix_html only ADDS missing head elements; it never rewrites page content. Don't",
+        "  ask it to do more than that.",
+        "- Show the user each file you're about to write and let them confirm.",
+        "- A failing retrieval gate (JS-only rendering, blocked bots, robots.txt disallow) caps the",
+        "  whole score — fix those before tuning schema or copy.",
+      ].join("\n"),
     });
   }
   if (method === "notifications/initialized" || method === "notifications/cancelled") return; // no reply

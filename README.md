@@ -138,11 +138,17 @@ uploaded, no account needed, and it never touches production.
 }
 ```
 
-**Claude Code** — add to `.mcp.json` in your project root (same shape), or run:
+**Claude Code / Claude Cowork** — run this in your project:
 
 ```bash
 claude mcp add openaeo -- npx -y openaeo-audit mcp
 ```
+
+…or copy [`examples/.mcp.json`](examples/.mcp.json) to your project root.
+
+For a repeatable workflow, drop [`examples/aeo-fix-pass/`](examples/aeo-fix-pass/SKILL.md) into
+`.claude/skills/` — then `/aeo-fix-pass` runs the whole audit-fix-verify pass, including the
+guardrails (merge robots.txt rather than overwrite, never invent numbers for the placeholders).
 
 Then just ask:
 
