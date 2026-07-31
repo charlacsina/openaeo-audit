@@ -146,6 +146,7 @@ async function audit(url) {
 
   return {
     domain: p.host, score, band: band(score), verdict, sub, fixCount: fails, edgeOk,
+    platform: require("./platform").detectPlatform(body),
     checks: checks.map(c => ({ label: c[0], status: c[1], detail: c[2] })),
   };
 }

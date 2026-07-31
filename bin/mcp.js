@@ -15,6 +15,7 @@
 
 const { audit, remediationPlan } = require("../src/audit");
 const G = require("../src/generate");
+const P = require("../src/platform");
 
 const PROTOCOL = "2024-11-05";
 const SERVER = { name: "openaeo", version: require("../package.json").version };
@@ -66,6 +67,23 @@ const TOOLS = [
     },
   },
   {
+    name: "aeo_fix_my_site",
+    description:
+      "ONE-SHOT for people who don't have a codebase. Give it a domain and it audits the site, "
+      + "detects the platform (Squarespace, Wix, Webflow, WordPress, Shopify, Framer, Ghost, Carrd or "
+      + "custom), generates the exact files/snippets, and returns click-by-click instructions for where "
+      + "to paste each one in THAT platform's admin — including an honest note when a platform can't do "
+      + "something. Use this whenever the user isn't a developer or their site is on a website builder.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        domain: { type: "string", description: "Domain or full URL, e.g. example.com" },
+        brand: { type: "string", description: "Business name (optional; defaults from the domain)" },
+      },
+      required: ["domain"],
+    },
+  },
+  {
     name: "aeo_check_html",
     description:
       "Score a page's HTML against the checks a single file can satisfy (title, meta description, "
@@ -108,6 +126,27 @@ async function runTool(name, args) {
                              : "Nothing to inject — the page already has a title, meta description and Organization/WebSite JSON-LD.",
     };
   }
+  if (name === "aeo_fix_my_site") {
+    const res = await audit(String(args.domain || ""));
+    if (res.error) return { error: res.error };
+    const files = G.fixFiles(res.domain, args.brand);
+    const guide = P.setupGuide(res.platform.id);
+    const failing = res.checks.filter(c => c.status !== "pass").map(c => c.label);
+    return {
+      domain: res.domain, score: res.score, band: res.band, verdict: res.verdict,
+      platform: guide.platform,
+      whatsWrong: failing,
+      whereToPaste: guide.tasks,
+      cantDoOnThisPlatform: guide.unsupported.length ? guide.unsupported : undefined,
+      files: { "robots.txt": files.robots, "llms.txt": files.llms,
+               "json-ld (paste in <head>)": files.jsonld, "opening paragraph (draft)": files.rewrite },
+      tip: guide.tip,
+      forTheUser:
+        "Walk the user through this one task at a time, in their platform's own words. Show them the "
+        + "exact text to copy for each step. Do NOT fill in the [bracketed] placeholders yourself — ask "
+        + "them for their real prices, counts and dates, or leave the brackets for them.",
+    };
+  }
   if (name === "aeo_check_html") return G.htmlReadiness(String(args.html || ""));
   return { error: "Unknown tool: " + name };
 }
@@ -128,7 +167,14 @@ async function handle(msg) {
         "OpenAEO audits a website for AI-search visibility (AEO/GEO) — whether ChatGPT, Claude,",
         "Gemini and Perplexity can read, trust and cite it — and generates the fixes.",
         "",
-        "Workflow when the user asks you to improve their AI-search visibility:",
+        "FIRST, work out which kind of user you have:",
+        "- No codebase / site is on Squarespace, Wix, Webflow, WordPress, Shopify, Framer, Ghost,",
+        "  Carrd — or they just gave you a domain and aren't a developer:",
+        "  use aeo_fix_my_site. It returns click-by-click steps for THEIR platform's admin.",
+        "  Walk them through one task at a time and paste the exact text for each step.",
+        "- They have the site's source open in this project: use the workflow below.",
+        "",
+        "Workflow when the user has a codebase:",
         "1. aeo_audit their domain. Report the score, the band, and which checks failed.",
         "2. aeo_fix_files to generate robots.txt, llms.txt and JSON-LD. Write robots.txt and",
         "   llms.txt into the site's public/static root (e.g. public/, static/, or the repo root).",

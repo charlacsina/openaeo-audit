@@ -157,10 +157,23 @@ Then just ask:
 The agent will run the audit, write `robots.txt` and `llms.txt`, inject the JSON-LD into your
 `<head>`, and re-check its work.
 
+### Not a developer? You only need your web address.
+
+If your site is on **Squarespace, Wix, Webflow, WordPress, Shopify, Framer, Ghost or Carrd**, you
+don't have files to edit — so ask instead:
+
+> *"My website is remyfilm.co — help me show up in AI search."*
+
+OpenAEO detects which platform you're on and replies with click-by-click steps for **your**
+admin ("Settings → Advanced → Code Injection → paste this in the Header"), plus the exact text
+to copy. It'll also tell you honestly when your platform *can't* do something, so you don't hunt
+for a setting that doesn't exist.
+
 ### Tools it exposes
 
 | Tool | What it does |
 |---|---|
+| `aeo_fix_my_site` | **One shot, no codebase needed.** Audits, detects your platform, and returns where-to-paste steps for that platform's admin |
 | `aeo_audit` | Audits a live domain — score, band, every check, prioritised fixes |
 | `aeo_fix_files` | Generates paste-ready `robots.txt`, `llms.txt`, JSON-LD, and an opening paragraph |
 | `aeo_fix_html` | Takes a page's HTML, returns it with `<title>`, meta description and JSON-LD injected — **only adds what's missing, never rewrites your content** |
