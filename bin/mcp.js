@@ -87,7 +87,7 @@ const TOOLS = [
   {
     name: "aeo_packet",
     description:
-      "Generate an engineering packet for a domain: an ordered list of tickets, each with the audit "
+      "Generate an engineering packet for a domain (the open-source version): an ordered list of tickets, each with the audit "
       + "evidence that justifies it, where the change goes for that stack, implementation steps, "
       + "acceptance criteria, and an `agentPrompt` you can execute directly. Use this when the user "
       + "wants you to actually FIX their site rather than just audit it — work the tickets in order, "
@@ -168,13 +168,14 @@ async function runTool(name, args) {
   if (name === "aeo_packet") {
     const res = await audit(String(args.domain || ""));
     if (res.error) return { error: res.error };
-    const pk = PK.buildPacket(res, { brand: args.brand });
+    const pk = PK.buildPacket(res, { brand: args.brand, tier: "free" });
     return {
       domain: pk.meta.domain, platform: pk.meta.platform,
-      scoreToday: pk.summary.today, scoreProjected: pk.summary.projected,
+      scoreToday: pk.summary.today, band: pk.summary.band,
       ticketCount: pk.summary.ticketCount, blocking: pk.summary.blocking,
       tickets: pk.tickets,
       rules: pk.notes,
+      alsoAvailable: pk.upgrade,
       forTheAgent:
         "Work these in order, P1 before P2. For each ticket: show the user the change first, then apply it. "
         + "Never invent values for [BRACKETS] — ask the user. Never write schema for content that isn't "

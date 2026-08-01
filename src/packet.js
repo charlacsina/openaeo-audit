@@ -9,6 +9,58 @@
 // Anything we can't derive from the crawl ships as a [BRACKET] the owner fills.
 "use strict";
 
+
+// ---- competitor evidence ---------------------------------------------------
+// The "here's who is being recommended instead of you" section. Built ONLY from
+// the user's own citation runs — real answers from real assistants for their
+// real prompts. Nothing here is inferred or invented; if there are no runs, the
+// section is omitted rather than filled with plausible-sounding guesses.
+const PLATFORMS = new Set(["reddit.com","youtube.com","facebook.com","twitter.com","x.com",
+  "linkedin.com","instagram.com","medium.com","quora.com","pinterest.com","tiktok.com"]);
+
+function registrable(host) {
+  host = String(host || "").toLowerCase().replace(/^https?:\/\//, "").split("/")[0].replace(/^www\./, "");
+  const p = host.split("."); return p.length >= 2 ? p.slice(-2).join(".") : host;
+}
+
+function competitorEvidence(citationRuns, clientDomain, knownCompetitors) {
+  if (!citationRuns || !citationRuns.length) return null;
+  const run = citationRuns[citationRuns.length - 1];
+  const results = (run.results || []).filter(r => !r.mock);   // never build evidence from mock answers
+  if (!results.length) return null;
+
+  const client = registrable(clientDomain);
+  const comps = new Set((knownCompetitors || []).map(registrable));
+  const byDomain = new Map();
+  const yourQueries = new Set();
+  let citedYou = 0, totalQ = new Set();
+
+  for (const r of results) {
+    totalQ.add(r.query);
+    if (r.status === "cited") { citedYou++; yourQueries.add(r.query); }
+    for (const src of (r.sources || [])) {
+      const d = registrable(src);
+      if (!d || d === client) continue;
+      if (!byDomain.has(d)) byDomain.set(d, { domain: d, citations: 0, queries: new Set(), surfaces: new Set(), isCompetitor: comps.has(d), isPlatform: PLATFORMS.has(d) });
+      const e = byDomain.get(d);
+      e.citations++; e.queries.add(r.query); if (r.surface) e.surfaces.add(r.surface);
+    }
+  }
+  const ranked = [...byDomain.values()].sort((a, b) => b.citations - a.citations);
+  const shape = e => ({ domain: e.domain, citations: e.citations, queries: [...e.queries].sort(),
+                        surfaces: [...e.surfaces].sort(), type: e.isCompetitor ? "competitor" : e.isPlatform ? "community" : "publication" });
+  return {
+    testedOn: run.date || "",
+    promptsTested: totalQ.size,
+    youWereCited: citedYou,
+    competitors: ranked.filter(e => e.isCompetitor).slice(0, 8).map(shape),
+    roundups: ranked.filter(e => !e.isCompetitor && !e.isPlatform).slice(0, 10).map(shape),
+    community: ranked.filter(e => e.isPlatform).slice(0, 5).map(shape),
+    note: "Every domain below was named by an assistant in response to your own target prompts on "
+        + (run.date || "the last run") + ". Mock results are excluded — this is only real answers.",
+  };
+}
+
 const EFFORT = { S: "S (under an hour)", M: "M (half a day)", L: "L (1–2 days)", XL: "XL (project — scope with the team)" };
 
 // Where the fix physically goes, per platform. Keeps the packet actionable for
@@ -233,6 +285,39 @@ function buildPacket(auditResult, opts) {
     ? ["Repo access, or the template that renders <head> plus one rendered page (curl output)"]
     : ["Admin access to " + platformName + " (or someone who can paste into it)"];
 
+  // ---- tier split ----------------------------------------------------------
+  // free  = the open-source packet: tickets you can act on, no infrastructure.
+  // solo+ = adds what needs a server or paid APIs behind it — the representative
+  //         crawl, the phase plan, and competitor evidence from live citation runs.
+  const tier = (opts.tier || "solo").toLowerCase();
+  if (tier === "free") {
+    return {
+      meta: { domain: auditResult.domain, brand: opts.brand || (auditResult.domain || "").split(".")[0],
+              generated: new Date().toISOString().slice(0, 10), platform: platformName,
+              agentReady: hints(platform).agent, tier: "free", openSource: true },
+      summary: { today: auditResult.score, band: auditResult.band, verdict: auditResult.verdict,
+                 detail: auditResult.sub, ticketCount: tickets.length,
+                 blocking: tickets.filter(t => t.priority === "P1").length },
+      checks: auditResult.checks || [],
+      tickets: tickets.map(t => ({
+        id: t.id, rubric: t.rubric, title: t.title, priority: t.priority, owner: t.owner,
+        effort: t.effort, value: t.value, why: t.why, evidence: t.evidence, where: t.where,
+        implementation: t.implementation, acceptance: t.acceptance,
+        acceptanceCommand: t.acceptanceCommand, agentPrompt: t.agentPrompt,
+      })),
+      notes: [
+        "This is the open-source packet — everything here runs locally with no account (npx openaeo-audit).",
+        "Anything we could not verify from your site ships as a [BRACKET]. We do not invent prices, counts, dates or profile URLs.",
+      ],
+      upgrade: {
+        message: "Solo ($10/mo) adds a representative crawl across your templates, a phased plan with "
+               + "verified-only forecasting, competitor evidence from live citation tests, and a "
+               + "print-ready PDF.",
+        url: "https://openaeo.dev/pricing",
+      },
+    };
+  }
+
   return {
     meta: {
       domain: auditResult.domain,
@@ -240,6 +325,7 @@ function buildPacket(auditResult, opts) {
       generated: new Date().toISOString().slice(0, 10),
       platform: platformName,
       agentReady: hints(platform).agent,
+      tier: "solo",
     },
     summary: {
       today: auditResult.score,
@@ -253,6 +339,7 @@ function buildPacket(auditResult, opts) {
       ticketCount: tickets.length,
     },
     checks: auditResult.checks || [],
+    competitors: competitorEvidence(opts.citationRuns, auditResult.domain, opts.competitors),
     phases,
     whatWeNeedFromYou: { access, values: [...askSet] },
     tickets,
@@ -265,4 +352,4 @@ function buildPacket(auditResult, opts) {
   };
 }
 
-module.exports = { buildPacket, ticketsFor, hints };
+module.exports = { buildPacket, ticketsFor, hints, competitorEvidence };
