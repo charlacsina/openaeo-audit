@@ -48,6 +48,8 @@ const TICKETS = [
     ],
     accept: ["curl of each key template contains the visible headline and body copy",
              "Audit check 'Content readable in raw HTML' returns pass"],
+    cmd: d => `curl -s https://${d}/ | grep -c "$(curl -s https://${d}/ | sed -n 's/.*<h1[^>]*>\\([^<]*\\).*/\\1/p' | head -1)"  # expect >= 1`,
+    points: 22, phase: 0,
     agent: "Find where this project renders page copy. Identify any substantive text that only exists after client-side hydration, and move it to server-rendered output. Do not change the design or wording. Then verify with curl that the headline appears in the raw HTML.",
   },
   {
@@ -61,6 +63,8 @@ const TICKETS = [
                 "Confirm it serves at https://YOURDOMAIN/robots.txt."],
     accept: ["/robots.txt returns 200 and lists the AI user-agents with Allow: /",
              "No Disallow: / applies to those agents"],
+    cmd: d => `curl -s https://${d}/robots.txt | grep -A1 -iE "GPTBot|ClaudeBot|PerplexityBot"`,
+    points: 12, phase: 0,
     agent: "Read the existing robots.txt if present, merge in Allow rules for the AI crawlers (GPTBot, OAI-SearchBot, ChatGPT-User, ClaudeBot, Claude-SearchBot, PerplexityBot, Google-Extended, Bingbot, Applebot) without removing existing rules, and write it back to the static root.",
   },
   {
@@ -73,6 +77,8 @@ const TICKETS = [
                 "List your key pages with one line each on what's on them.",
                 "Add 2–4 verifiable facts (a price, a count, a founding year) — no marketing adjectives."],
     accept: ["/llms.txt returns 200", "Contains no unresolved [BRACKETS]"],
+    cmd: d => `curl -sI https://${d}/llms.txt | head -1   # expect 200`,
+    points: 4, phase: 1, needs: ["A one-line description of what the business does and who it is for", "2-4 verifiable facts (a price, a count, a founding year)"],
     agent: "Create an llms.txt at the static root following the llms.txt convention. Use only facts you can verify from the site's own content — leave [BRACKETS] for anything you cannot confirm and tell the user what to fill in.",
   },
   {
@@ -86,6 +92,8 @@ const TICKETS = [
                 "Validate at validator.schema.org before shipping."],
     accept: ["Page source contains valid Organization and WebSite JSON-LD",
              "No unresolved [VERIFY] markers remain", "validator.schema.org reports no errors"],
+    cmd: d => `curl -s https://${d}/ | grep -o '"@type":"Organization"' | head -1`,
+    points: 8, phase: 1, needs: ["Your LinkedIn / X / other profile URLs for sameAs (we will not guess these)"],
     agent: "Add Organization and WebSite JSON-LD to the site's <head> template. Derive name and url from the site itself. For sameAs, leave [VERIFY: ...] placeholders — do NOT invent social URLs. Validate the JSON parses.",
   },
   {
@@ -97,6 +105,8 @@ const TICKETS = [
                 "The price in schema MUST equal the price shown on the page — mismatches get discounted.",
                 "If pricing is quote-based, publish a starting-from number or skip this ticket honestly."],
     accept: ["Pricing page carries a priced Offer", "Schema price matches the visible price exactly"],
+    cmd: d => `curl -s https://${d}/pricing | grep -o '"price"[^,]*' | head -3`,
+    points: 6, phase: 2, needs: ["Confirmed current prices, exactly as they appear on the page"],
     agent: "Add Product/Offer JSON-LD to the pricing page using the prices ALREADY VISIBLE on that page. Never invent or adjust a price. If no price is visible, stop and tell the user this ticket can't be completed honestly.",
   },
   {
@@ -110,6 +120,8 @@ const TICKETS = [
                 "Use real numbers only; leave [BRACKETS] for anything unverified."],
     accept: ["First 100 words contain the category, the audience and at least one number",
              "title/meta/H1 agree semantically"],
+    cmd: d => `curl -s https://${d}/ | sed 's/<[^>]*>/ /g' | tr -s " " | head -c 700 | grep -oE "[0-9]+"`,
+    points: 9, phase: 2, needs: ["One verifiable specific per key page: a price, a customer count, a founding year, or a city"],
     agent: "Draft a rewritten opening paragraph for each key page. Use ONLY specifics you can verify from the existing site content; put [BRACKETS] around anything you cannot confirm and list them for the user. Present the draft for approval — do not publish copy changes silently.",
   },
   {
@@ -122,6 +134,8 @@ const TICKETS = [
                 "Publish them visibly on the page, then mirror them in FAQPage JSON-LD.",
                 "Schema must match the visible text — don't add questions only to the schema."],
     accept: ["FAQ page shows the Q&A visibly", "FAQPage JSON-LD mirrors it exactly", "8+ questions"],
+    cmd: d => `curl -s https://${d}/faq | grep -o '"@type":"Question"' | wc -l   # expect >= 8`,
+    points: 6, phase: 2, needs: ["8-12 questions customers actually ask, with your real answers"],
     agent: "Add FAQPage JSON-LD that mirrors the Q&A ALREADY VISIBLE on the page. If there is no visible FAQ, draft one from the site's existing content for the user to approve first — never ship schema for Q&A that isn't on the page.",
   },
   {
@@ -133,6 +147,8 @@ const TICKETS = [
                 "Surface a visible \"Updated <date>\" that matches it.",
                 "Never bump the date without a real content change."],
     accept: ["dateModified present and equal to the visible updated date", "Value is genuinely accurate"],
+    cmd: d => `curl -s https://${d}/ | grep -o '"dateModified":"[^"]*"' | head -1`,
+    points: 5, phase: 3,
     agent: "Wire dateModified in the page schema to the real last-modified date from the CMS or git history. Do not hardcode today's date.",
   },
 ];
@@ -151,6 +167,13 @@ function ticketsFor(auditResult, platformId) {
     out.push({
       id: "AEO-" + String(n).padStart(2, "0"),
       rubric: def.gate,
+      // VERIFIED = the crawl proved this gap (fail). POTENTIAL = it may already
+      // partly pass (warn) — those raise the ceiling, never the forecast.
+      confidence: check.status === "fail" ? "verified" : "potential",
+      points: def.points || 0,
+      phase: def.phase == null ? 3 : def.phase,
+      acceptanceCommand: def.cmd ? def.cmd(auditResult.domain || "YOURDOMAIN") : null,
+      needsFromYou: def.needs || [],
       title: def.title,
       owner: def.owner,
       effort: EFFORT[def.effort],
@@ -168,6 +191,8 @@ function ticketsFor(auditResult, platformId) {
 }
 
 /** Build the whole packet from an audit result. */
+const ON_SITE_CEILING = 82;   // on-site work alone can't reach AI-dominant
+
 function buildPacket(auditResult, opts) {
   opts = opts || {};
   const platform = (auditResult.platform && auditResult.platform.id) || "custom";
@@ -179,11 +204,34 @@ function buildPacket(auditResult, opts) {
   // community mentions) and measurement — none of which a code change can fix.
   // So we cap the on-site projection at the top of AI-competitive (82) and say
   // plainly that 83+ needs off-site work. Never project a perfect score.
-  const ON_SITE_CEILING = 82;
   const passing = (auditResult.checks || []).filter(c => c.status === "pass").length;
   const total = (auditResult.checks || []).length || 8;
-  const raw = Math.round(((passing + tickets.length) / total) * 100);
-  const projected = Math.min(raw, ON_SITE_CEILING);
+  // NOTE: the real projection is computed from the phase table below (verified
+  // points only). `raw` is kept only as the optimistic ceiling for context.
+  const raw = Math.min(Math.round(((passing + tickets.length) / total) * 100), ON_SITE_CEILING);
+
+  // Phase table. Projections count VERIFIED points only; potential points raise
+  // the ceiling but never the forecast — the same discipline as the hand-built packets.
+  const PHASE_NAME = { 0: "Phase 0 — the gate (do this first)", 1: "Phase 1 — quick wins",
+                       2: "Phase 2 — big bets", 3: "Phase 3 — fill-ins" };
+  const phases = [0, 1, 2, 3].map(ph => {
+    const inPhase = tickets.filter(t => t.phase === ph);
+    const verified = inPhase.filter(t => t.confidence === "verified").reduce((n, t) => n + t.points, 0);
+    const potential = inPhase.filter(t => t.confidence === "potential").reduce((n, t) => n + t.points, 0);
+    return { phase: ph, name: PHASE_NAME[ph], tickets: inPhase.map(t => t.id),
+             verifiedPts: verified, potentialPts: potential };
+  }).filter(p => p.tickets.length);
+  // running projected score, verified points only, capped
+  let running = auditResult.score;
+  for (const ph of phases) { running = Math.min(running + ph.verifiedPts, ON_SITE_CEILING); ph.projected = running; }
+
+  // Everything the owner must supply, deduped — the "send this list" section.
+  const askSet = new Set();
+  tickets.forEach(t => (t.needsFromYou || []).forEach(x => askSet.add(x)));
+  const h2 = hints(platform);
+  const access = h2.agent
+    ? ["Repo access, or the template that renders <head> plus one rendered page (curl output)"]
+    : ["Admin access to " + platformName + " (or someone who can paste into it)"];
 
   return {
     meta: {
@@ -196,13 +244,17 @@ function buildPacket(auditResult, opts) {
     summary: {
       today: auditResult.score,
       band: auditResult.band,
-      projected: Math.min(projected, 100),
+      // verified-only forecast (last phase's running total) — never the optimistic one
+      projected: phases.length ? phases[phases.length - 1].projected : auditResult.score,
+      ceiling: raw,
       verdict: auditResult.verdict,
       detail: auditResult.sub,
       blocking: p1,
       ticketCount: tickets.length,
     },
     checks: auditResult.checks || [],
+    phases,
+    whatWeNeedFromYou: { access, values: [...askSet] },
     tickets,
     notes: [
       "Every ticket below is justified by evidence from the crawl of " + auditResult.domain + " on " + new Date().toISOString().slice(0, 10) + ".",
