@@ -16,6 +16,7 @@
 const { audit, remediationPlan } = require("../src/audit");
 const G = require("../src/generate");
 const P = require("../src/platform");
+const PK = require("../src/packet");
 
 const PROTOCOL = "2024-11-05";
 const SERVER = { name: "openaeo", version: require("../package.json").version };
@@ -84,6 +85,23 @@ const TOOLS = [
     },
   },
   {
+    name: "aeo_packet",
+    description:
+      "Generate an engineering packet for a domain: an ordered list of tickets, each with the audit "
+      + "evidence that justifies it, where the change goes for that stack, implementation steps, "
+      + "acceptance criteria, and an `agentPrompt` you can execute directly. Use this when the user "
+      + "wants you to actually FIX their site rather than just audit it — work the tickets in order, "
+      + "P1 first, showing the user each change before you make it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        domain: { type: "string", description: "Domain or full URL" },
+        brand: { type: "string", description: "Business name (optional)" },
+      },
+      required: ["domain"],
+    },
+  },
+  {
     name: "aeo_check_html",
     description:
       "Score a page's HTML against the checks a single file can satisfy (title, meta description, "
@@ -145,6 +163,22 @@ async function runTool(name, args) {
         "Walk the user through this one task at a time, in their platform's own words. Show them the "
         + "exact text to copy for each step. Do NOT fill in the [bracketed] placeholders yourself — ask "
         + "them for their real prices, counts and dates, or leave the brackets for them.",
+    };
+  }
+  if (name === "aeo_packet") {
+    const res = await audit(String(args.domain || ""));
+    if (res.error) return { error: res.error };
+    const pk = PK.buildPacket(res, { brand: args.brand });
+    return {
+      domain: pk.meta.domain, platform: pk.meta.platform,
+      scoreToday: pk.summary.today, scoreProjected: pk.summary.projected,
+      ticketCount: pk.summary.ticketCount, blocking: pk.summary.blocking,
+      tickets: pk.tickets,
+      rules: pk.notes,
+      forTheAgent:
+        "Work these in order, P1 before P2. For each ticket: show the user the change first, then apply it. "
+        + "Never invent values for [BRACKETS] — ask the user. Never write schema for content that isn't "
+        + "visible on the page. After the tickets are done, re-run aeo_audit to confirm the score moved.",
     };
   }
   if (name === "aeo_check_html") return G.htmlReadiness(String(args.html || ""));

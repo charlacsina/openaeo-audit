@@ -1,6 +1,6 @@
 {
   "name": "openaeo-audit",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Quick AEO/GEO audit — check whether your site is retrievable and citable by AI answer engines (ChatGPT, Claude, Gemini, Perplexity). Zero dependencies.",
   "keywords": [
     "aeo",
