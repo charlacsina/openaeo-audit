@@ -113,7 +113,110 @@ const TOOLS = [
       required: ["html"],
     },
   },
+  {
+    name: "aeo_crawler_intel",
+    description:
+      "Has this site's CDN started refusing AI crawlers? Reads OpenAEO's corpus of per-crawler "
+      + "reachability observations to show what each crawler is served today, what changed since the "
+      + "last observation, and how often each has been blocked. Answers what robots.txt cannot: a CDN "
+      + "can refuse ClaudeBot while robots.txt allows it, and a provider changing a default is invisible "
+      + "to the site owner. Needs OPENAEO_API_KEY (Solo and above).",
+    inputSchema: {
+      type: "object",
+      properties: { domain: { type: "string", description: "Domain to look up, e.g. example.com" } },
+      required: ["domain"],
+    },
+  },
+  {
+    name: "aeo_citations",
+    description:
+      "Run a citation test: ask the assistants a buyer question and record whether this business is "
+      + "named. Runs on openaeo.dev because it needs provider keys for six surfaces. Needs "
+      + "OPENAEO_API_KEY (Solo and above).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        domain: { type: "string", description: "The domain to look for in the answers" },
+        query: { type: "string", description: "The buyer question to ask, e.g. 'best film presets for portraits'" },
+      },
+      required: ["domain", "query"],
+    },
+  },
+  {
+    name: "aeo_history",
+    description:
+      "Score history for a tracked site: how the AEO score has moved over time, and which checks "
+      + "changed. Needs OPENAEO_API_KEY (Solo and above).",
+    inputSchema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "aeo_drift",
+    description:
+      "What regressed. Lists checks that were passing and are not any more, and crawlers that were "
+      + "reachable and are not any more, so a deploy that broke AI visibility is caught before anyone "
+      + "notices the traffic. Needs OPENAEO_API_KEY (Solo and above).",
+    inputSchema: {
+      type: "object",
+      properties: { domain: { type: "string", description: "Domain to check, defaults to your tracked site" } },
+      required: [],
+    },
+  },
+  {
+    name: "aeo_competitors",
+    description:
+      "Competitor share of voice: which domains the assistants name instead of you, across your "
+      + "tracked prompts. Needs OPENAEO_API_KEY (Business and above).",
+    inputSchema: { type: "object", properties: {}, required: [] },
+  },
 ];
+
+
+/* ---- hosted tools -----------------------------------------------------------
+ *
+ * Everything above runs entirely on this machine. These five do not, and cannot:
+ * citation testing needs provider keys for six assistants, and the crawler corpus
+ * is an accumulation across every audit anyone has run. Shipping either in an MIT
+ * package is not a licensing decision, it is impossible.
+ *
+ * So they are thin clients. The valuable part is the service, and the tool is the
+ * few lines that reach it.
+ *
+ * When there is no key they explain what the tool needs and where to get it,
+ * rather than returning an auth error. The agent is mid-conversation with someone
+ * who has just asked a reasonable question, and "401" is not an answer to it.
+ */
+const API_BASE = process.env.OPENAEO_API_BASE || "https://openaeo.dev";
+
+function apiKey() { return (process.env.OPENAEO_API_KEY || "").trim(); }
+
+const NEEDS_KEY = {
+  error: "This tool runs on openaeo.dev, so it needs an API key.",
+  why: "Citation testing needs provider keys for six assistants, and crawler intelligence reads a "
+     + "corpus collected across every audit. Neither can run locally.",
+  how: "Create a key in your dashboard at https://openaeo.dev/dashboard, then set OPENAEO_API_KEY in "
+     + "your MCP client's env. The local tools (aeo_audit, aeo_fix_files, aeo_fix_html, aeo_check_html, "
+     + "aeo_packet, aeo_fix_my_site) need no key and are unaffected.",
+};
+
+async function hostedGet(path) {
+  const key = apiKey();
+  if (!key) return NEEDS_KEY;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 30000);
+  try {
+    const r = await fetch(API_BASE + path, {
+      headers: { Authorization: "Bearer " + key, Accept: "application/json" },
+      signal: ctrl.signal,
+    });
+    const body = await r.json().catch(() => ({}));
+    if (r.status === 401) return { error: "That API key was not accepted.", how: NEEDS_KEY.how };
+    if (r.status === 402) return { error: body.error || "That tool needs a paid plan.", upgrade: "https://openaeo.dev/pricing" };
+    if (!r.ok) return { error: body.error || ("openaeo.dev returned " + r.status) };
+    return body;
+  } catch (e) {
+    return { error: e.name === "AbortError" ? "openaeo.dev timed out." : "Could not reach openaeo.dev." };
+  } finally { clearTimeout(t); }
+}
 
 // ---- tool implementations -------------------------------------------------
 async function runTool(name, args) {
@@ -129,6 +232,37 @@ async function runTool(name, args) {
       note: "Score is from the 8 headline checks. The hosted product at https://openaeo.dev runs the full "
           + "49-check rubric and tracks it over time.",
     };
+  }
+  if (name === "aeo_crawler_intel") {
+    const d = String(args.domain || "").trim();
+    if (!d) return { error: "Which domain?" };
+    return hostedGet("/api/crawler-intel?domain=" + encodeURIComponent(d));
+  }
+  if (name === "aeo_citations") {
+    const d = String(args.domain || "").trim(), q = String(args.query || "").trim();
+    if (!d || !q) return { error: "Need both `domain` and `query`." };
+    return hostedGet("/api/citation-test?domain=" + encodeURIComponent(d) + "&q=" + encodeURIComponent(q));
+  }
+  if (name === "aeo_history") return hostedGet("/api/history");
+  if (name === "aeo_drift") {
+    const d = String(args.domain || "").trim();
+    const intel = await hostedGet("/api/crawler-intel" + (d ? "?domain=" + encodeURIComponent(d) : ""));
+    if (intel.error) return intel;
+    return {
+      domain: intel.domain,
+      crawlerRegressions: intel.regressions || [],
+      observations: intel.observations,
+      note: (intel.regressions && intel.regressions.length)
+        ? "A crawler that was reachable is not any more. This is usually a CDN or WAF rule, not robots.txt."
+        : "No crawler regressions in the recorded window. " + (intel.note || ""),
+    };
+  }
+  if (name === "aeo_competitors") {
+    const d = await hostedGet("/api/dashboard");
+    if (d.error) return d;
+    return { shareOfVoice: d.shareOfVoice || null,
+             note: d.shareOfVoice ? "Domains the assistants named across your tracked prompts."
+                                  : "No share-of-voice data yet. It needs Business and at least one citation run." };
   }
   if (name === "aeo_fix_files") return G.fixFiles(args.domain, args.brand);
   if (name === "aeo_fix_html") {

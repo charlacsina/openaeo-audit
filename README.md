@@ -181,6 +181,19 @@ for a setting that doesn't exist.
 | `aeo_fix_html` | Takes a page's HTML, returns it with `<title>`, meta description and JSON-LD injected — **only adds what's missing, never rewrites your content** |
 | `aeo_check_html` | Scores HTML without changing it, to verify the edits worked |
 
+**Hosted tools.** These five call openaeo.dev and need `OPENAEO_API_KEY`, because they
+cannot run locally: citation testing needs provider keys for six assistants, and crawler
+intelligence reads a corpus collected across every audit anyone runs. Without a key they
+explain what they need rather than failing; the six tools above are unaffected.
+
+| Tool | What it does |
+|---|---|
+| `aeo_crawler_intel` | Has this site's CDN started refusing AI crawlers, and when did that change |
+| `aeo_citations` | Ask the assistants a buyer question, record whether you were named |
+| `aeo_history` | How the score has moved over time |
+| `aeo_drift` | What was passing and is not any more |
+| `aeo_competitors` | Which domains get named instead of you |
+
 ---
 
 ## Requirements
