@@ -7,3 +7,6 @@ node_modules/
 # MCP registry signing key. The public half goes in the site .well-known file;
 # this half must never be committed.
 .secrets/
+
+# the registry publishing CLI, downloaded not vendored
+mcp-publisher
