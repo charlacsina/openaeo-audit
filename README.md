@@ -190,14 +190,20 @@ for a setting that doesn't exist.
 
 ## What this is — and isn't
 
-This is the **open-source quick audit**: a fast, honest, single-page heuristic check you can run anywhere. It's the same engine that powers the free tier at [openaeo.dev](https://openaeo.dev).
+**What's in this repo.** The audit engine: 5 retrieval gates, 8 headline checks,
+per-bot edge fetches, and the generators for `robots.txt`, `llms.txt` and JSON-LD.
+Plus the CLI and the MCP server. Free forever, MIT, no account, no telemetry.
+It's the same engine that powers the free tier at [openaeo.dev](https://openaeo.dev).
 
-The hosted product adds what a one-shot CLI can't:
+**What isn't.** The hosted service: the full 49-check weighted rubric tracked
+over time, weekly citation testing across six assistant surfaces, drift alerts,
+competitor share-of-voice, and audit history. That runs on our infrastructure,
+not yours.
 
-- The **full rubric** (49 weighted checks across 6 dimensions), not just these headline 8
-- **Citation testing** — does ChatGPT / Claude / Gemini / Perplexity actually name *you* for the questions your customers ask?
-- **Monitoring** — scheduled re-audits and alerts when your visibility changes
-- Generated `robots.txt`, `llms.txt`, and JSON-LD ready to paste
+The split is not about withholding the good part. Fixing a site is mostly a
+one-time job, and everything you need for it is here. Whether an assistant names
+you changes every week, and that is a thing that has to keep running whether or
+not anyone is watching. Sell the service, not the permission.
 
 If the CLI is useful, [the hosted version](https://openaeo.dev) is the next step. Both tell you the truth; the hosted one keeps telling you over time.
 
@@ -210,3 +216,10 @@ Issues and PRs welcome — especially new checks, better detection heuristics, a
 ## License
 
 [MIT](LICENSE) © OpenAEO. Use it, fork it, build on it.
+
+## Trademark
+
+"OpenAEO" and the OpenAEO logo are trademarks of OpenAEO and are not licensed
+under the MIT License. Forks and derivative works may use this code freely, but
+must not use the OpenAEO name or logo in a way that suggests endorsement,
+affiliation, or that they are the official OpenAEO product or service.
