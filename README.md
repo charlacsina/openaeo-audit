@@ -56,6 +56,7 @@ The audit runs the checks that most often decide whether an AI assistant can quo
 |---|---|
 | **Content readable in raw HTML** | AI crawlers don't run your JavaScript. If content only appears after hydration, they see an empty page. |
 | **robots.txt allows AI bots** | One inherited `Disallow` line can hide you from ChatGPT and Perplexity entirely. |
+| **Per-bot edge reachability** | robots.txt is a request; a CDN is an enforcer. We fetch as GPTBot, OAI-SearchBot, ClaudeBot, Claude-SearchBot, PerplexityBot, Googlebot, Bingbot and Applebot, and record the status each is given. Google-Extended is a robots.txt token with no crawler behind it, so it is read rather than fetched. |
 | **llms.txt index present** | An emerging convention that hands assistants a clean, quotable summary of your site. |
 | **Organization + WebSite JSON-LD** | Structured identity is how assistants know who you are. |
 | **Product / Offer schema with price** | Lets assistants answer "how much does X cost" with your real number. |
@@ -107,6 +108,7 @@ fixes.forEach(f => console.log(f.title));
   "sub": "Retrievable, but thin on quotable specifics ...",
   "fixCount": 2,
   "edgeOk": true,
+  "bots": [ { "name": "GPTBot", "surface": "ChatGPT", "kind": "fetched", "status": 200, "ok": true }, ... ],
   "checks": [ { "label": "...", "status": "pass|warn|fail", "detail": "..." }, ... ]
 }
 ```
@@ -190,9 +192,10 @@ for a setting that doesn't exist.
 
 ## What this is — and isn't
 
-**What's in this repo.** The audit engine: 5 retrieval gates, 8 headline checks,
-per-bot edge fetches, and the generators for `robots.txt`, `llms.txt` and JSON-LD.
-Plus the CLI and the MCP server. Free forever, MIT, no account, no telemetry.
+**What's in this repo.** The audit engine: 5 retrieval gates, 8 headline checks, and a per-bot edge
+matrix that fetches your site as 8 named AI crawlers and records the HTTP status
+each one is given, plus the generators for `robots.txt`, `llms.txt` and JSON-LD,
+the CLI and the MCP server. Free forever, MIT, no account, no telemetry.
 It's the same engine that powers the free tier at [openaeo.dev](https://openaeo.dev).
 
 **What isn't.** The hosted service: the full 49-check weighted rubric tracked

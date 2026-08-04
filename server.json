@@ -3,7 +3,7 @@
   "name": "dev.openaeo/audit",
   "title": "OpenAEO",
   "description": "Audit a site for AI search visibility and write the fixes: robots.txt, llms.txt, JSON-LD. Free, MIT.",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "websiteUrl": "https://openaeo.dev/mcp",
   "repository": {
     "url": "https://github.com/charlacsina/openaeo-audit",
@@ -14,7 +14,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "openaeo-audit",
-      "version": "1.2.0",
+      "version": "1.3.0",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"

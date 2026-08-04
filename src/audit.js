@@ -26,6 +26,75 @@ function isPublicHost(host) {
 
 const UA_BOT = "Mozilla/5.0 (compatible; GPTBot/1.1; +https://openai.com/gptbot) OpenAEO-audit (+https://github.com/charlacsina/openaeo-audit)";
 
+
+/* ---- the per-bot edge matrix ----
+ *
+ * robots.txt is a request; a content delivery network is an enforcer, and they
+ * disagree more often than anyone expects. A site can allow ClaudeBot in
+ * robots.txt and still have its CDN answer that crawler a 403, and no edit to
+ * robots.txt undoes a 403. The only way to know is to ask as each crawler and
+ * record what came back.
+ *
+ * Google-Extended is deliberately not fetched. It is a robots.txt token telling
+ * Google whether it may use the content for Gemini; no crawler identifies as it,
+ * Googlebot does the fetching. Inventing a Google-Extended user agent would
+ * produce a number that looks like evidence and is not, so it is read from
+ * robots.txt and reported as policy rather than reachability.
+ */
+const AI_BOTS = [
+  { name: "GPTBot",           surface: "ChatGPT",      ua: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; GPTBot/1.1; +https://openai.com/gptbot" },
+  { name: "OAI-SearchBot",    surface: "ChatGPT",      ua: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; OAI-SearchBot/1.0; +https://openai.com/searchbot" },
+  { name: "ClaudeBot",        surface: "Claude",       ua: "Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)" },
+  { name: "Claude-SearchBot", surface: "Claude",       ua: "Mozilla/5.0 (compatible; Claude-SearchBot/1.0; +claudebot@anthropic.com)" },
+  { name: "PerplexityBot",    surface: "Perplexity",   ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36; compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot" },
+  { name: "Googlebot",        surface: "AI Overviews", ua: "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)" },
+  { name: "Bingbot",          surface: "Copilot",      ua: "Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)" },
+  { name: "Applebot",         surface: "Siri",         ua: "Mozilla/5.0 (compatible; Applebot/0.1; +http://www.apple.com/go/applebot)" },
+];
+
+function robotsDisallowsAgent(low, agent) {
+  for (const g of String(low || "").split(/^\s*user-agent:/im)) {
+    const who = (g.trim().split("\n")[0] || "").trim();
+    if ((who === agent || who === "*") && /^\s*disallow:\s*\/\s*$/im.test(g)) return true;
+  }
+  return false;
+}
+
+// A HEAD is enough to learn whether the edge lets a crawler in, and it costs the
+// audited site almost nothing. Servers that reject HEAD are retried with a GET.
+async function botStatus(url, ua) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 6000);
+  try {
+    let r = await fetch(url, { method: "HEAD", headers: { "User-Agent": ua, Accept: "text/html,*/*" }, redirect: "follow", signal: ctrl.signal });
+    if (r.status === 405 || r.status === 501) {
+      r = await fetch(url, { headers: { "User-Agent": ua, Accept: "text/html,*/*" }, redirect: "follow", signal: ctrl.signal });
+    }
+    return { status: r.status, server: r.headers.get("server") || "" };
+  } catch (e) {
+    return { status: 0, server: "", error: e.name === "AbortError" ? "timeout" : "unreachable" };
+  } finally { clearTimeout(t); }
+}
+
+// Every crawler asked at once. allSettled, because one hostile response must not
+// lose the other seven results.
+async function edgeMatrix(url, robotsBody) {
+  const settled = await Promise.allSettled(AI_BOTS.map(b => botStatus(url, b.ua)));
+  const low = String(robotsBody || "").toLowerCase();
+  const bots = AI_BOTS.map((b, i) => {
+    const r = settled[i].status === "fulfilled" ? settled[i].value : { status: 0, error: "unreachable" };
+    const reachable = r.status > 0 && r.status < 400;
+    return { name: b.name, surface: b.surface, kind: "fetched", status: r.status,
+             server: r.server || undefined, ok: reachable,
+             note: reachable ? "" : (r.error || ("HTTP " + r.status + " at the edge")) };
+  });
+  const dis = robotsDisallowsAgent(low, "google-extended");
+  bots.push({ name: "Google-Extended", surface: "Gemini", kind: "policy", status: null,
+              ok: !dis,
+              note: dis ? "disallowed in robots.txt" : "robots.txt token only, no crawler identifies as it" });
+  return bots;
+}
+
 async function fetchUrl(url, ua, timeoutMs = 8000) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -91,6 +160,20 @@ async function audit(url) {
     if (r.status >= 400) { edgeOk = false; edgeNote = "HTTP " + r.status + " (bot blocked at edge)"; }
   } catch (e) { return { error: "Couldn't reach " + p.host + "." }; }
 
+  // Ask every crawler, not one. robots.txt is fetched once and shared with the
+  // matrix, which needs it for the single agent that has no crawler behind it.
+  const robotsBody = await fetchUrl(p.protocol + "//" + p.host + "/robots.txt", UA_BOT)
+    .then(r => r.text).catch(() => "");
+  const bots = await edgeMatrix(url, robotsBody);
+  const blockedBots = bots.filter(b => b.kind === "fetched" && !b.ok);
+  const fetchedBots = bots.filter(b => b.kind === "fetched");
+  if (blockedBots.length) {
+    edgeOk = false;
+    edgeNote = blockedBots.length === fetchedBots.length
+      ? "every AI crawler blocked at the edge"
+      : blockedBots.map(b => b.name).join(", ") + " blocked at the edge";
+  }
+
   const text = visibleText(body); const words = text.split(/\s+/).filter(Boolean).length;
   const blocks = ldBlocks(body); const types = flattenTypes(blocks);
   const title = /<title[^>]*>\s*\S/i.test(body);
@@ -145,7 +228,7 @@ async function audit(url) {
   else { verdict = "Partially retrievable."; sub = "Some content is readable, but missing structure and specifics keep you out of the answer."; }
 
   return {
-    domain: p.host, score, band: band(score), verdict, sub, fixCount: fails, edgeOk,
+    domain: p.host, score, band: band(score), verdict, sub, fixCount: fails, edgeOk, bots,
     platform: require("./platform").detectPlatform(body),
     checks: checks.map(c => ({ label: c[0], status: c[1], detail: c[2] })),
   };
@@ -182,4 +265,4 @@ function remediationPlan(auditResult) {
   return steps;
 }
 
-module.exports = { audit, band, remediationPlan, FIX_LIBRARY };
+module.exports = { audit, band, remediationPlan, edgeMatrix, AI_BOTS, FIX_LIBRARY };
