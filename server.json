@@ -1,0 +1,36 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "dev.openaeo/audit",
+  "title": "OpenAEO",
+  "description": "Audit a site for AI search visibility and write the fixes: robots.txt, llms.txt, JSON-LD. Free, MIT.",
+  "version": "1.2.0",
+  "websiteUrl": "https://openaeo.dev/mcp",
+  "repository": {
+    "url": "https://github.com/charlacsina/openaeo-audit",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "openaeo-audit",
+      "version": "1.2.0",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtimeArguments": [
+        {
+          "type": "positional",
+          "value": "-y"
+        }
+      ],
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
+    }
+  ]
+}

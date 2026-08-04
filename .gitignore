@@ -3,3 +3,7 @@ node_modules/
 .DS_Store
 .env
 .env.*
+
+# MCP registry signing key. The public half goes in the site .well-known file;
+# this half must never be committed.
+.secrets/
