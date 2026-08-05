@@ -216,14 +216,38 @@ function parseAccessLog(text, ranges) {
       distinctIps: e.ips.size,
       verified: e.verified, impostor: e.impostor, unverifiable: e.unverifiable,
       impostorIps: impostorIps.slice(0, 5),
+      ipRows: [...e.ips.entries()].map(([ip, v]) => ({ ip, n: v.n, status: v.status, why: v.why })),
       whyUnverifiable: e.verified === 0 && e.impostor === 0 ? e.whyUnverifiable : null,
       firstSeen: e.firstSeen, lastSeen: e.lastSeen,
     });
   }
   bots.sort((a, b) => b.hits - a.hits);
 
+  // What share of the AI crawler traffic this site thinks it is getting is real.
+  //
+  // Nobody reports this, and every site owner assumes the answer is all of it.
+  // Stated as a share of what we could decide, with the undecided count next to
+  // it, because folding "we could not tell" into either column would be the same
+  // overstatement this whole file exists to avoid.
+  let claimed = 0, confirmed = 0, fake = 0, undetermined = 0;
+  for (const b of bots) {
+    claimed += b.hits; confirmed += b.verified; fake += b.impostor; undetermined += b.unverifiable;
+  }
+  const decided = confirmed + fake;
+  const authenticity = {
+    claimed, confirmed, impostor: fake, undetermined,
+    rate: decided ? Math.round((confirmed / decided) * 100) : null,
+    note: !decided
+      ? "None of these requests could be verified either way, so no share can be stated."
+      : Math.round((confirmed / decided) * 100) === 100
+        ? "Every request we could decide came from the operator it named."
+        : Math.round((confirmed / decided) * 100) + "% of the requests we could decide were genuine. "
+          + "The rest wore a crawler's name without owning the address."
+      + (undetermined ? " " + undetermined + " could not be decided either way." : ""),
+  };
+
   return {
-    bots, lines, parsed, botHits, truncated,
+    bots, lines, parsed, botHits, truncated, authenticity,
     unparsed: lines - parsed,
     format: parsed === 0 ? "unrecognised" : (raw[0] || "").trim()[0] === "{" ? "json" : "combined",
   };
@@ -322,4 +346,49 @@ function reconcile(probeBots, logBots) {
   return { level, headline, rows, agree, contradict, unseen, impostorTotal, verifiedTotal };
 }
 
-module.exports = { parseAccessLog, reconcile, parseLine, identifyBot, BOT_TOKENS };
+// Second pass: forward-confirmed reverse DNS over the addresses the range check
+// could not settle.
+//
+// This is deliberately separate and async. Parsing a log is arithmetic and should
+// stay instant and testable; resolving a few hundred addresses is network, and a
+// caller that cannot afford the wait can simply not call this and still get a
+// correct, if less complete, answer.
+async function enrichWithRdns(parsed, BVmod) {
+  const BV = BVmod || require("./botverify");
+  const entries = [];
+  for (const b of parsed.bots) {
+    for (const r of (b.ipRows || [])) entries.push({ ip: r.ip, bot: b.bot, row: r, status: r.status });
+  }
+  await BV.enrichWithRdns(entries);
+
+  for (const e of entries) {
+    e.row.status = e.status;
+    if (e.why) e.row.why = e.why;
+    if (e.rdns) e.row.rdns = e.rdns;
+    if (e.via) e.row.via = e.via;
+  }
+  // Recount from the rows, because the whole point was that some of them moved.
+  for (const b of parsed.bots) {
+    b.verified = b.impostor = b.unverifiable = 0;
+    for (const r of (b.ipRows || [])) {
+      if (r.status === "verified") b.verified += r.n;
+      else if (r.status === "impostor") b.impostor += r.n;
+      else b.unverifiable += r.n;
+    }
+    b.impostorIps = (b.ipRows || []).filter(r => r.status === "impostor").map(r => r.ip).slice(0, 5);
+    b.rdnsConfirmed = (b.ipRows || []).filter(r => r.via === "rdns").length;
+  }
+  let claimed = 0, confirmed = 0, fake = 0, undetermined = 0;
+  for (const b of parsed.bots) {
+    claimed += b.hits; confirmed += b.verified; fake += b.impostor; undetermined += b.unverifiable;
+  }
+  const decided = confirmed + fake;
+  parsed.authenticity = Object.assign({}, parsed.authenticity, {
+    claimed, confirmed, impostor: fake, undetermined,
+    rate: decided ? Math.round((confirmed / decided) * 100) : null,
+    rdnsUsed: true,
+  });
+  return parsed;
+}
+
+module.exports = { parseAccessLog, reconcile, enrichWithRdns, parseLine, identifyBot, BOT_TOKENS };

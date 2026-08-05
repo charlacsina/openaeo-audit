@@ -45,7 +45,13 @@ never sent anywhere.
   if (!asJson) process.stderr.write(C.dim("Reading " + file + " and checking crawler identities…\n"));
   let ranges = null;
   try { ranges = await BV.loadRanges(); } catch (e) { ranges = null; }
-  const r = BL.parseAccessLog(text, ranges);
+  let r = BL.parseAccessLog(text, ranges);
+  // Published ranges settle most addresses without a lookup. Reverse DNS,
+  // forward confirmed, settles some of what is left: it is the method Google and
+  // Bing document, and it is the difference between "we could not tell" and an
+  // answer.
+  if (!asJson) process.stderr.write(C.dim("Confirming reverse DNS where the ranges were silent…\n"));
+  try { r = await BL.enrichWithRdns(r, BV); } catch (e) { /* ranges alone still answer */ }
 
   if (asJson) { console.log(JSON.stringify(r, null, 2)); return; }
 
@@ -62,6 +68,17 @@ never sent anywhere.
   console.log(C.dim(`  ${r.parsed} of ${plural(r.lines, "line", "lines")} read (${r.format}), `
     + `${plural(r.botHits, "crawler request", "crawler requests")}`));
   console.log("");
+
+  // The headline, because it is the one number a site owner has never seen and
+  // will assume is 100%.
+  const a = r.authenticity || {};
+  if (a.rate !== null && a.rate !== undefined) {
+    const col = a.rate >= 95 ? C.green : a.rate >= 70 ? C.yellow : C.red;
+    console.log(`  ${C.bold("How much of it was real")}   ${col(C.bold(a.rate + "%"))}`);
+    console.log(C.dim(`  ${a.confirmed} confirmed from the operator's own network, ${a.impostor} wearing the name`
+      + (a.undetermined ? `, ${a.undetermined} we could not decide` : "")));
+    console.log("");
+  }
   for (const b of r.bots) {
     const colour = b.outcome === "served" ? C.green : b.outcome === "refused" ? C.red : C.yellow;
     const n = (k, one, many) => k + " " + (k === 1 ? one : many);

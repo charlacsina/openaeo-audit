@@ -208,9 +208,93 @@ function classify(ip, botName, ranges) {
   return { status: "impostor", why: "outside every range " + entry.op + " publishes for this crawler", op: entry.op };
 }
 
+// ---- forward-confirmed reverse DNS ------------------------------------------
+//
+// The second, independent signal, and the one Google and Bing actually document
+// as the way to verify their crawlers. A published range is a list we fetched; a
+// forward-confirmed PTR is a fact about the address itself, checked in both
+// directions so a spoofed PTR record cannot pass:
+//
+//   1. reverse(1.2.3.4)      -> crawl-1-2-3-4.googlebot.com
+//   2. the hostname must end in a domain the operator actually controls
+//   3. resolve(that hostname) -> must contain 1.2.3.4 again
+//
+// Step 3 is the whole point. Anyone can set a PTR record on their own address
+// claiming to be googlebot.com. Nobody can make googlebot.com resolve back to it.
+//
+// Only three operators publish an rDNS convention. OpenAI, Anthropic and
+// Perplexity publish address ranges instead, so for those this returns
+// "no-convention" rather than a verdict, which is a different thing from a
+// failure and is reported as such.
+const RDNS_SUFFIX = {
+  googlebot:     [".googlebot.com", ".google.com", ".googleusercontent.com"],
+  googleother:   [".googlebot.com", ".google.com", ".googleusercontent.com"],
+  bingbot:       [".search.msn.com"],
+  applebot:      [".applebot.apple.com", ".apple.com"],
+};
+
+const RDNS_CACHE = new Map();
+const RDNS_MAX = 250;          // a log can hold thousands of addresses
+const RDNS_CONCURRENCY = 8;
+
+async function verifyRdns(ip, botName) {
+  const key = String(botName || "").toLowerCase();
+  const suffixes = RDNS_SUFFIX[key];
+  if (!suffixes) return { status: "no-convention", why: "this operator publishes no reverse DNS convention" };
+  const cacheKey = key + "|" + ip;
+  if (RDNS_CACHE.has(cacheKey)) return RDNS_CACHE.get(cacheKey);
+
+  let out;
+  try {
+    const dns = require("dns").promises;
+    const names = await dns.reverse(ip);
+    const name = (names || []).find(n => suffixes.some(sfx => String(n).toLowerCase().endsWith(sfx)));
+    if (!name) {
+      out = { status: "mismatch", why: "reverse DNS is " + ((names || [])[0] || "absent")
+              + ", which is not a host this operator controls" };
+    } else {
+      // Forward confirm. Without this the check is worthless: a PTR record is
+      // set by whoever owns the address, not by Google.
+      const v6 = ip.indexOf(":") >= 0;
+      const fwd = v6 ? await dns.resolve6(name) : await dns.resolve4(name);
+      out = (fwd || []).includes(ip)
+        ? { status: "confirmed", host: name, why: "reverse DNS is " + name + " and it resolves back to this address" }
+        : { status: "mismatch", host: name,
+            why: "reverse DNS claims " + name + " but that name does not resolve back to this address" };
+    }
+  } catch (e) {
+    out = { status: "unresolved", why: "no reverse DNS record for this address" };
+  }
+  if (RDNS_CACHE.size < 4000) RDNS_CACHE.set(cacheKey, out);
+  return out;
+}
+
+// Upgrade a set of already-classified addresses using reverse DNS.
+//
+// Only ever upgrades. A range match is the stronger signal and is never undone
+// here, and an address rDNS cannot confirm stays exactly as the range check left
+// it: "unverifiable" does not become "impostor" because a DNS lookup timed out.
+async function enrichWithRdns(entries) {
+  const todo = entries.filter(e => e.status !== "verified" && RDNS_SUFFIX[String(e.bot || "").toLowerCase()])
+                      .slice(0, RDNS_MAX);
+  for (let i = 0; i < todo.length; i += RDNS_CONCURRENCY) {
+    const slice = todo.slice(i, i + RDNS_CONCURRENCY);
+    await Promise.all(slice.map(async e => {
+      const r = await verifyRdns(e.ip, e.bot);
+      e.rdns = r.status;
+      if (r.status === "confirmed") { e.status = "verified"; e.why = r.why; e.via = "rdns"; }
+      else if (r.status === "mismatch" && e.status === "unverifiable") {
+        // A PTR that names an operator it cannot prove is positive evidence.
+        e.status = "impostor"; e.why = r.why;
+      }
+    }));
+  }
+  return entries;
+}
+
 function sourceList() {
   return SOURCES.map(s => ({ operator: s.op, url: s.url, crawlers: s.bots }));
 }
 
-module.exports = { loadRanges, classify, sourceList, SOURCES, NO_FEED,
+module.exports = { loadRanges, classify, verifyRdns, enrichWithRdns, RDNS_SUFFIX, sourceList, SOURCES, NO_FEED,
   _v4ToInt: v4ToInt, _v6ToBig: v6ToBig, _parsePrefix: parsePrefix, _ipInPrefix: ipInPrefix };
