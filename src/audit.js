@@ -41,6 +41,36 @@ const UA_BOT = "Mozilla/5.0 (compatible; GPTBot/1.1; +https://openai.com/gptbot)
  * produce a number that looks like evidence and is not, so it is read from
  * robots.txt and reported as policy rather than reachability.
  */
+// What kind of page is this, and therefore which checks are fair to apply.
+//
+// Scoring every page against every check quietly rewards schema stuffing. An
+// About page has no product and no FAQ, so demanding Product/Offer and FAQPage
+// there pushes the owner to bolt on markup describing content that does not
+// exist. That is floating schema, the practice this tool tells people to avoid,
+// and until now this tool was recommending it: run the CLI against your own
+// About page and it would tell you to add an Offer to a page that sells nothing.
+function pageKind(pathname, types) {
+  const path = String(pathname || "/").toLowerCase().replace(/\/+$/, "") || "/";
+  if (types.has("Product") || types.has("Offer") ||
+      /^\/(pricing|plans?|buy|shop|store|products?|checkout|order)(\/|$)/.test(path)) return "commerce";
+  if (types.has("Article") || types.has("BlogPosting") || types.has("NewsArticle") ||
+      /^\/(blog|news|articles?|posts?|stories)(\/|$)/.test(path)) return "article";
+  if (/^\/(docs?|documentation|api|guides?|reference|help|support|manual|changelog)(\/|$)/.test(path)) return "docs";
+  if (/^\/(about|contact|team|careers?|privacy|terms|legal|licen[cs]e|imprint|security)(\/|$)/.test(path))
+    return "informational";
+  return path === "/" ? "homepage" : "general";
+}
+
+// A price on the page is what makes Offer schema honest, not the page's job title.
+const MONEY_RE = /(?:[$£€¥]\s?\d|\b\d+(?:\.\d+)?\s?(?:usd|eur|gbp)\b|\bper month\b|\/mo\b)/i;
+
+// Question-shaped content is what makes FAQPage honest.
+function looksFaq(body, types) {
+  if (types.has("FAQPage") || types.has("QAPage")) return true;
+  if (/id=["'][^"']*faq|class=["'][^"']*faq|frequently asked/i.test(body)) return true;
+  return (body.match(/<h[2-4][^>]*>[^<]*\?\s*<\/h[2-4]>/gi) || []).length >= 2;
+}
+
 const AI_BOTS = [
   { name: "GPTBot",           surface: "ChatGPT",      ua: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; GPTBot/1.1; +https://openai.com/gptbot" },
   { name: "OAI-SearchBot",    surface: "ChatGPT",      ua: "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; OAI-SearchBot/1.0; +https://openai.com/searchbot" },
@@ -78,8 +108,23 @@ async function botStatus(url, ua) {
 
 // Every crawler asked at once. allSettled, because one hostile response must not
 // lose the other seven results.
+// A neutral non-browser client, used as a control.
+//
+// This is what makes the matrix interpretable rather than merely suggestive. We
+// fetch with a crawler's user agent from this machine, and a real crawler arrives
+// from its operator's network. A firewall that keys on the address can refuse us
+// precisely because we are an unverified client claiming to be GPTBot, while
+// waving the real one through, and the reverse also happens.
+//
+// So a 403 alone does not distinguish "this site refuses GPTBot" from "this site
+// refuses anything that is not a browser". The control separates them.
+const UA_CONTROL = "OpenAEO-control/1.0 (+https://openaeo.dev/crawler-check)";
+
 async function edgeMatrix(url, robotsBody) {
-  const settled = await Promise.allSettled(AI_BOTS.map(b => botStatus(url, b.ua)));
+  const [settled, control] = await Promise.all([
+    Promise.allSettled(AI_BOTS.map(b => botStatus(url, b.ua))),
+    botStatus(url, UA_CONTROL),
+  ]);
   const low = String(robotsBody || "").toLowerCase();
   const bots = AI_BOTS.map((b, i) => {
     const r = settled[i].status === "fulfilled" ? settled[i].value : { status: 0, error: "unreachable" };
@@ -92,6 +137,21 @@ async function edgeMatrix(url, robotsBody) {
   bots.push({ name: "Google-Extended", surface: "Gemini", kind: "policy", status: null,
               ok: !dis,
               note: dis ? "disallowed in robots.txt" : "robots.txt token only, no crawler identifies as it" });
+
+  const controlOk = control.status > 0 && control.status < 400;
+  const anyBlocked = bots.some(b => b.kind === "fetched" && !b.ok);
+  if (!anyBlocked) {
+    bots.confidence = { level: "clear", control: control.status,
+      note: "Every crawler we asked was served, and so was a plain unidentified client." };
+  } else if (controlOk) {
+    bots.confidence = { level: "name-based", control: control.status,
+      note: "A plain unidentified client was served while these crawlers were refused, so the rule "
+          + "keys on the crawler's name rather than on us being an unknown client." };
+  } else {
+    bots.confidence = { level: "inconclusive", control: control.status,
+      note: "A plain unidentified client was refused too, so this site turns away anything that is not "
+          + "a recognised browser. We cannot tell from the outside whether AI crawlers are singled out." };
+  }
   return bots;
 }
 
@@ -201,36 +261,61 @@ async function audit(url) {
   checks.push(["llms.txt index present", llms, llms === "pass" ? "found" : "missing"]);
   const org = (types.has("Organization") && types.has("WebSite")) ? "pass" : (types.size ? "warn" : "fail");
   checks.push(["Organization + WebSite JSON-LD", org, [...types].slice(0, 4).join(", ") || "no JSON-LD"]);
+  const kind = pageKind(p.pathname, types);
+  const offerApplies = kind === "commerce" || hasOfferPrice(blocks) || MONEY_RE.test(text);
   const prod = hasOfferPrice(blocks) ? "pass" : "warn";
-  checks.push(["Product / Offer schema with price", prod, prod === "pass" ? "priced offer found" : "no priced Offer"]);
+  checks.push(["Product / Offer schema with price", prod,
+    offerApplies ? (prod === "pass" ? "priced offer found" : "no priced Offer") : "nothing is sold on this page",
+    offerApplies,
+    offerApplies ? null : "This page shows no price, so Offer schema here would describe a product that is not on it."]);
   const ans = hasNumberEarly ? "pass" : (title ? "warn" : "fail");
   checks.push(["Answer + a number in the first 100 words", ans, ans === "pass" ? "specific + titled" : "vague / no title or meta"]);
+  const faqApplies = looksFaq(body, types);
   const faq = types.has("FAQPage") ? "pass" : "fail";
-  checks.push(["FAQPage schema present", faq, faq === "pass" ? "found" : "missing"]);
+  checks.push(["FAQPage schema present", faq,
+    faqApplies ? (faq === "pass" ? "found" : "missing") : "no question and answer content here",
+    faqApplies,
+    faqApplies ? null : "This page asks no questions, so FAQPage schema here would be markup with nothing behind it."]);
   const fresh = JSON.stringify(blocks).includes('"dateModified"') ? "pass" : "warn";
   checks.push(["Freshness (dateModified) present", fresh, fresh === "pass" ? "dateModified set" : "no freshness signal"]);
 
   const pts = { pass: 1.0, warn: 0.4, fail: 0.0 };
-  const baseScore = Math.round(checks.reduce((a, c) => a + pts[c[1]], 0) / checks.length * 100);
+  // Score over what applies to this page. A page is never marked down for
+  // declining to publish schema about content it does not have.
+  const scored = checks.filter(c => c[3] !== false);
+  const notApplicable = checks.length - scored.length;
+  const baseScore = Math.round(scored.reduce((a, c) => a + pts[c[1]], 0) / scored.length * 100);
   let cap = 100;
   if (!edgeOk) cap = Math.min(cap, 25);
   if (csr) cap = Math.min(cap, 25);
   if (rstatus === "fail") cap = Math.min(cap, 40);
   const score = Math.min(baseScore, cap);
-  const fails = checks.filter(c => c[1] === "fail").length;
+  const fails = scored.filter(c => c[1] === "fail").length;
 
   let verdict, sub;
-  if (csr) { verdict = "Invisible to AI crawlers."; sub = "Your content only appears after JavaScript runs — a crawler receives an empty page. This caps everything else."; }
+  if (csr) { verdict = "Invisible to AI crawlers."; sub = "Your content only appears after JavaScript runs, a crawler receives an empty page. This caps everything else."; }
   else if (!edgeOk) { verdict = "Blocked at the edge (" + edgeNote + ")."; sub = "Your CDN or WAF is turning AI bots away before they see a byte. robots.txt can't fix a 403."; }
   else if (score >= 83) { verdict = "AI-dominant. Defend it."; sub = "You clear the gates and the answer layer is quotable. Keep it fresh and push off-site consensus."; }
-  else if (score >= 65) { verdict = "AI-competitive — close the gaps."; sub = "The gates pass. Tighten schema and the answer layer to get named ahead of competitors."; }
+  else if (score >= 65) { verdict = "AI-competitive. Close the gaps."; sub = "The gates pass. Tighten schema and the answer layer to get named ahead of competitors."; }
   else if (score >= 46) { verdict = "AI-ready, not yet cited."; sub = "Retrievable, but thin on quotable specifics and structured data. Fixable without a redesign."; }
   else { verdict = "Partially retrievable."; sub = "Some content is readable, but missing structure and specifics keep you out of the answer."; }
 
   return {
     domain: p.host, score, band: band(score), verdict, sub, fixCount: fails, edgeOk, bots,
     platform: require("./platform").detectPlatform(body),
-    checks: checks.map(c => ({ label: c[0], status: c[1], detail: c[2] })),
+    pageType: kind, checksScored: scored.length, checksNotApplicable: notApplicable,
+    crawlerEvidence: {
+      method: "We request the page with each crawler's user agent, from this machine.",
+      limitation: "A real crawler arrives from its operator's published address range. A firewall that "
+                + "checks the address can refuse us and allow the real one, or the reverse. Treat this "
+                + "as an indication.",
+      settles_it: "Your own server logs. Run `openaeo-audit log <file>` to read one, or use the "
+                + "aeo_read_log tool, and it will check every crawler against the range its operator "
+                + "publishes. Nothing leaves your machine.",
+      confidence: (bots && bots.confidence) || null,
+    },
+    checks: checks.map(c => ({ label: c[0], status: c[1], detail: c[2],
+      applicable: c[3] !== false, notApplicableWhy: c[4] || null })),
   };
 }
 
@@ -253,7 +338,12 @@ const FIX_ORDER = ["raw html", "robots", "llms", "organization", "offer", "answe
  * @returns {Array<object>} ordered fixes (highest-leverage first)
  */
 function remediationPlan(auditResult) {
-  const status = {}; (auditResult.checks || []).forEach(c => status[c.label] = c.status);
+  // Not-applicable checks never become fixes. This is the whole point of the
+  // page-type work: printing "Add FAQPage schema" under a page that asks no
+  // questions is instructing somebody to publish markup with nothing behind it,
+  // and an agent reading this list will simply do it.
+  const status = {};
+  (auditResult.checks || []).forEach(c => { if (c.applicable !== false) status[c.label] = c.status; });
   const steps = [];
   for (const key of FIX_ORDER) {
     const fx = FIX_LIBRARY[key]; let st = null;

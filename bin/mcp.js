@@ -114,6 +114,45 @@ const TOOLS = [
     },
   },
   {
+    name: "aeo_read_log",
+    description:
+      "Read a server access log and report what AI crawlers actually got: which arrived, what status "
+      + "they were given, which paths they reached, and whether each request really came from the "
+      + "operator it claimed. Understands the combined format nginx and Apache write by default, and "
+      + "JSON lines from Cloudflare, Fastly, Vercel and Netlify. "
+      + "This is the tool that settles what an audit can only indicate: a fetch sent from this machine "
+      + "wearing a crawler's name is an indication, and the log is the evidence. Where the two disagree, "
+      + "the log is right. "
+      + "Runs entirely locally. The log is parsed in this process and never sent anywhere; the only "
+      + "network call is fetching the operators' public address ranges.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        log: { type: "string", description: "The access log text. Paste it or read the file first." },
+        bots: { type: "array", description: "Optional: the bots array from a previous aeo_audit call, "
+                + "to reconcile what we measured against what actually happened.", items: { type: "object" } },
+      },
+      required: ["log"],
+    },
+  },
+  {
+    name: "aeo_verify_crawler",
+    description:
+      "Check whether an IP address really belongs to the crawler it claims to be, against the ranges "
+      + "the operator publishes. OpenAI, Anthropic, Google, Microsoft, Perplexity and Apple all publish "
+      + "these. Answers verified, impostor, or unverifiable, and never says impostor without positive "
+      + "evidence: if the operator publishes nothing, or the feed fails to load, the answer is "
+      + "unverifiable. Use when a log line looks suspicious or before allow-listing anything by name.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ip: { type: "string", description: "The client IP address from your log" },
+        bot: { type: "string", description: "The crawler it claims to be, e.g. GPTBot" },
+      },
+      required: ["ip", "bot"],
+    },
+  },
+  {
     name: "aeo_crawler_intel",
     description:
       "Has this site's CDN started refusing AI crawlers? Reads OpenAEO's corpus of per-crawler "
@@ -317,6 +356,36 @@ async function runTool(name, args) {
     };
   }
   if (name === "aeo_check_html") return G.htmlReadiness(String(args.html || ""));
+
+  if (name === "aeo_read_log") {
+    const BL = require("../src/botlog");
+    const BV = require("../src/botverify");
+    let ranges = null;
+    try { ranges = await BV.loadRanges(); } catch (e) { ranges = null; }
+    const parsed = BL.parseAccessLog(String(args.log || ""), ranges);
+    if (!parsed.bots.length) {
+      return { read: parsed.parsed + " of " + parsed.lines + " lines",
+               crawlers: [],
+               note: parsed.parsed === 0
+                 ? "Could not read that as an access log. Understood formats: the combined format nginx "
+                   + "and Apache write by default, and JSON lines from Cloudflare, Fastly, Vercel and Netlify."
+                 : "No AI crawler appears in this log. That is itself an answer: in this window, none visited." };
+    }
+    const rec = BL.reconcile(Array.isArray(args.bots) ? args.bots : [], parsed.bots);
+    return { stats: { lines: parsed.lines, parsed: parsed.parsed, unparsed: parsed.unparsed,
+                      crawlerRequests: parsed.botHits, format: parsed.format },
+             crawlers: parsed.bots, reconcile: rec,
+             privacy: "Parsed locally. Nothing from this log left your machine." };
+  }
+
+  if (name === "aeo_verify_crawler") {
+    const BV = require("../src/botverify");
+    let ranges = null;
+    try { ranges = await BV.loadRanges(); } catch (e) { ranges = null; }
+    const v = BV.classify(String(args.ip || ""), String(args.bot || ""), ranges);
+    return { ip: args.ip, claims: args.bot, verdict: v.status, why: v.why,
+             operator: v.op || null, sources: BV.sourceList() };
+  }
   return { error: "Unknown tool: " + name };
 }
 
@@ -349,6 +418,13 @@ async function handle(msg) {
         "   llms.txt into the site's public/static root (e.g. public/, static/, or the repo root).",
         "3. aeo_fix_html on each key page's HTML, then write `fixedHtml` back to the file.",
         "4. aeo_check_html to verify, and re-run aeo_audit after deploying to confirm the score moved.",
+        "",
+        "If the audit reports crawlers blocked at the edge, say plainly that the fetch is an",
+        "indication and not proof: it is sent from this machine wearing the crawler's name, while the",
+        "real crawler arrives from its operator's own network. Ask the user for a server access log and",
+        "run aeo_read_log on it. That reconciles what we measured against what actually happened, and",
+        "where the two disagree the log is right. It also catches requests wearing a crawler's name",
+        "from addresses the operator does not own, which is a different problem and a real one.",
         "",
         "Rules:",
         "- Generated files contain [bracketed] placeholders. NEVER invent values for them —",

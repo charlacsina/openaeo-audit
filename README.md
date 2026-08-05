@@ -180,11 +180,18 @@ for a setting that doesn't exist.
 | `aeo_fix_files` | Generates paste-ready `robots.txt`, `llms.txt`, JSON-LD, and an opening paragraph |
 | `aeo_fix_html` | Takes a page's HTML, returns it with `<title>`, meta description and JSON-LD injected — **only adds what's missing, never rewrites your content** |
 | `aeo_check_html` | Scores HTML without changing it, to verify the edits worked |
+| `aeo_read_log` | Reads a server access log and reports what the crawlers **actually** got: which arrived, what status, which paths, and whether each request really came from the operator it claimed. Parsed on your machine; the log never leaves it |
+| `aeo_verify_crawler` | Checks one IP against the ranges the operator publishes. Answers verified, impostor, or unverifiable, and never says impostor without positive evidence |
 
 **Hosted tools.** These five call openaeo.dev and need `OPENAEO_API_KEY`, because they
 cannot run locally: citation testing needs provider keys for six assistants, and crawler
 intelligence reads a corpus collected across every audit anyone runs. Without a key they
-explain what they need rather than failing; the six tools above are unaffected.
+explain what they need rather than failing; the eight tools above are unaffected.
+
+The line between the two lists is not commercial squeamishness, it is what each thing needs.
+Anything that only requires your own site and public data runs on your machine, including the
+crawler verification and the log reading. Anything that needs *other people's* domains, or a
+yesterday to compare today against, needs a server that has been watching.
 
 | Tool | What it does |
 |---|---|
@@ -193,6 +200,43 @@ explain what they need rather than failing; the six tools above are unaffected.
 | `aeo_history` | How the score has moved over time |
 | `aeo_drift` | What was passing and is not any more |
 | `aeo_competitors` | Which domains get named instead of you |
+
+### Reading a server log
+
+An audit fetches your page from this machine wearing each crawler's user agent. That is an
+indication, not proof: a real crawler arrives from its operator's own network, and a firewall
+checking the address can refuse us while allowing the real one, or the reverse.
+
+Your access log is what settles it.
+
+```bash
+npx openaeo-audit log /var/log/nginx/access.log
+```
+
+```
+  Googlebot           refused        2 requests, 2 paths
+    403 x2
+    2 confirmed from the operator's own network
+    /docs x1  /pricing x1
+
+  GPTBot              impostor-only  1 request, 1 path
+    200 x1
+    1 request claimed to be GPTBot from outside its published range: 45.83.12.9
+```
+
+Two things fall out of this that a fetch cannot tell you. The first is when our reading was
+simply wrong, and the log corrects it. The second is that "GPTBot" in your log is a claim, not
+an identity: anyone can send that user agent, and plenty do, precisely because sites allow it.
+Every request is checked against the address ranges OpenAI, Anthropic, Google, Microsoft,
+Perplexity and Apple publish for exactly this purpose.
+
+A crawler is only ever called an impostor on positive evidence. If an operator publishes
+nothing, or a feed fails to load, the answer is "unverifiable" and never "impostor": the cost of
+a false accusation here is you blocking traffic you wanted.
+
+The log is read from disk, parsed in the process, and discarded. The one network call is fetching
+those public address ranges. Nothing from your log is uploaded, which is the entire reason this
+lives in the package rather than behind a login.
 
 ---
 

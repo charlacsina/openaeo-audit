@@ -1,7 +1,7 @@
 {
   "name": "openaeo-audit",
   "mcpName": "dev.openaeo/audit",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Quick AEO/GEO audit \u2014 check whether your site is retrievable and citable by AI answer engines (ChatGPT, Claude, Gemini, Perplexity). Zero dependencies.",
   "keywords": [
     "aeo",
