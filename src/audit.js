@@ -64,6 +64,48 @@ function pageKind(pathname, types) {
 // A price on the page is what makes Offer schema honest, not the page's job title.
 const MONEY_RE = /(?:[$£€¥]\s?\d|\b\d+(?:\.\d+)?\s?(?:usd|eur|gbp)\b|\bper month\b|\/mo\b)/i;
 
+function faqMirrorRate(blocks, text) {
+  const norm = t => String(t || "").replace(/\s+/g, " ").trim().toLowerCase();
+  const visible = norm(text);
+  const answers = [];
+  const walk = n => {
+    if (!n || typeof n !== "object") return;
+    if (Array.isArray(n)) return n.forEach(walk);
+    const t = n["@type"];
+    if ((t === "Question" || (Array.isArray(t) && t.includes("Question")))) {
+      const a = n.acceptedAnswer || n.suggestedAnswer;
+      const txt = a && (a.text || (Array.isArray(a) && a[0] && a[0].text));
+      if (txt) answers.push(norm(String(txt).replace(/<[^>]+>/g, " ")));
+    }
+    for (const k of Object.keys(n)) walk(n[k]);
+  };
+  walk(blocks);
+  if (!answers.length) return { total: 0, mirrored: 0 };
+  const mirrored = answers.filter(a => a.length > 24 && visible.includes(a.slice(0, 120))).length;
+  return { total: answers.length, mirrored };
+}
+
+function freshnessTruth(blocks, body) {
+  const m = JSON.stringify(blocks).match(/"dateModified"\s*:\s*"([\d-]{10})/);
+  if (!m) return { present: false };
+  const stamped = m[1];
+  const today = new Date().toISOString().slice(0, 10);
+  // The stamp is the one labelled "Updated", not merely the first <time> in the
+  // file. A page may legitimately carry other dates: this site reports a crawler
+  // measurement taken on someone else's server, marked up as <time> because that
+  // is what it is, and reading that as the page's freshness stamp reports a
+  // disagreement that does not exist.
+  const vis = body.match(/Updated\s*<time[^>]+datetime="([\d-]{10})"/i)
+           || body.match(/<time[^>]+datetime="([\d-]{10})"[^>]*>[^<]*<\/time>\s*<\/(?:p|div|footer)/i)
+           || body.match(/<time[^>]+datetime="([\d-]{10})"/i);
+  return {
+    present: true, stamped,
+    future: stamped > today,
+    visible: vis ? vis[1] : null,
+    disagrees: !!(vis && vis[1] !== stamped),
+  };
+}
+
 // Question-shaped content is what makes FAQPage honest.
 function looksFaq(body, types) {
   if (types.has("FAQPage") || types.has("QAPage")) return true;
@@ -271,13 +313,26 @@ async function audit(url) {
   const ans = hasNumberEarly ? "pass" : (title ? "warn" : "fail");
   checks.push(["Answer + a number in the first 100 words", ans, ans === "pass" ? "specific + titled" : "vague / no title or meta"]);
   const faqApplies = looksFaq(body, types);
-  const faq = types.has("FAQPage") ? "pass" : "fail";
-  checks.push(["FAQPage schema present", faq,
-    faqApplies ? (faq === "pass" ? "found" : "missing") : "no question and answer content here",
+  let faq, faqDetail;
+  if (!types.has("FAQPage")) { faq = "fail"; faqDetail = "missing"; }
+  else {
+    const mir = faqMirrorRate(blocks, text);
+    if (!mir.total) { faq = "warn"; faqDetail = "FAQPage declared with no questions in it"; }
+    else if (mir.mirrored === mir.total) { faq = "pass"; faqDetail = mir.total + " of " + mir.total + " answers appear on the page"; }
+    else if (mir.mirrored === 0) { faq = "fail"; faqDetail = "none of the " + mir.total + " answers appear in the visible copy"; }
+    else { faq = "warn"; faqDetail = mir.mirrored + " of " + mir.total + " answers appear in the visible copy"; }
+  }
+  checks.push(["FAQPage schema mirroring the page", faq,
+    faqApplies ? faqDetail : "no question and answer content here",
     faqApplies,
     faqApplies ? null : "This page asks no questions, so FAQPage schema here would be markup with nothing behind it."]);
-  const fresh = JSON.stringify(blocks).includes('"dateModified"') ? "pass" : "warn";
-  checks.push(["Freshness (dateModified) present", fresh, fresh === "pass" ? "dateModified set" : "no freshness signal"]);
+  const ft = freshnessTruth(blocks, body);
+  let fresh, freshDetail;
+  if (!ft.present) { fresh = "warn"; freshDetail = "no freshness signal"; }
+  else if (ft.future) { fresh = "fail"; freshDetail = "dateModified " + ft.stamped + " is in the future"; }
+  else if (ft.disagrees) { fresh = "warn"; freshDetail = "dateModified " + ft.stamped + " but the page shows " + ft.visible; }
+  else { fresh = "pass"; freshDetail = "dateModified " + ft.stamped + (ft.visible ? ", and the page says so too" : ""); }
+  checks.push(["Freshness date that is true", fresh, freshDetail]);
 
   const pts = { pass: 1.0, warn: 0.4, fail: 0.0 };
   // Score over what applies to this page. A page is never marked down for
@@ -327,8 +382,8 @@ const FIX_LIBRARY = {
   "organization": { title: "Add Organization + WebSite JSON-LD", check: "Organization + WebSite JSON-LD", why: "Structured identity is how assistants know who you are and connect your name to your site.", how: "Add an Organization node (name, url, sameAs) and a WebSite node in a JSON-LD <script>." },
   "offer": { title: "Add Product/Offer schema with price", check: "Product / Offer schema with price", why: "A priced Offer lets assistants answer 'how much does X cost' with your real number.", how: "Add a Product with an Offer { price, priceCurrency } that mirrors your visible pricing." },
   "answer": { title: "Rewrite the first 100 words to answer + cite a number", check: "Answer + a number in the first 100 words", why: "Assistants lift the first concrete, specific sentence. Adjectives don't get quoted; numbers do.", how: "Lead with what you are, who it's for, and one verifiable specific (a price, a count, a founding year)." },
-  "faqpage": { title: "Add FAQPage schema mirroring visible Q&A", check: "FAQPage schema present", why: "FAQPage schema maps directly onto the question-shaped queries people type into assistants.", how: "Wrap your real on-page Q&A in FAQPage / Question / acceptedAnswer JSON-LD." },
-  "freshness": { title: "Emit a truthful dateModified", check: "Freshness (dateModified) present", why: "Assistants prefer sources that signal they're current.", how: "Add a truthful dateModified to your schema and keep it accurate, do not fake it." },
+  "faqpage": { title: "Add FAQPage schema mirroring visible Q&A", check: "FAQPage schema mirroring the page", why: "FAQPage schema maps directly onto the question-shaped queries people type into assistants.", how: "Wrap your real on-page Q&A in FAQPage / Question / acceptedAnswer JSON-LD." },
+  "freshness": { title: "Emit a truthful dateModified", check: "Freshness date that is true", why: "Assistants prefer sources that signal they're current.", how: "Add a truthful dateModified to your schema and keep it accurate, do not fake it." },
 };
 const FIX_ORDER = ["raw html", "robots", "llms", "organization", "offer", "answer", "faqpage", "freshness"];
 
