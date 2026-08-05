@@ -58,7 +58,9 @@ never sent anywhere.
     return;
   }
 
-  console.log(C.dim(`  ${r.parsed} of ${r.lines} lines read (${r.format}), ${r.botHits} crawler requests`));
+  const plural = (k, one, many) => k + " " + (k === 1 ? one : many);
+  console.log(C.dim(`  ${r.parsed} of ${plural(r.lines, "line", "lines")} read (${r.format}), `
+    + `${plural(r.botHits, "crawler request", "crawler requests")}`));
   console.log("");
   for (const b of r.bots) {
     const colour = b.outcome === "served" ? C.green : b.outcome === "refused" ? C.red : C.yellow;
