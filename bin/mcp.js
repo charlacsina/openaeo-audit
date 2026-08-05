@@ -131,6 +131,9 @@ const TOOLS = [
         log: { type: "string", description: "The access log text. Paste it or read the file first." },
         bots: { type: "array", description: "Optional: the bots array from a previous aeo_audit call, "
                 + "to reconcile what we measured against what actually happened.", items: { type: "object" } },
+        domain: { type: "string", description: "Optional: the site this log belongs to. With an API key "
+                + "this adds your authenticity rate to the corpus and returns how you compare. Only the "
+                + "rate and the request count are sent; the log is not." },
       },
       required: ["log"],
     },
@@ -151,6 +154,33 @@ const TOOLS = [
       },
       required: ["ip", "bot"],
     },
+  },
+  {
+    name: "aeo_authenticity",
+    description:
+      "How much of the AI crawler traffic a site thinks it is getting is actually real, and how that "
+      + "compares to every other site we have read a log for. Every owner assumes their answer is 100%. "
+      + "The comparison is the part no local tool can produce: it needs other people's logs. "
+      + "Call with no arguments to read the current median, or pass a rate from aeo_read_log to add "
+      + "your own reading and get back where you stand.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        domain: { type: "string", description: "The site the reading is for" },
+        rate: { type: "number", description: "Optional: the authenticity rate from aeo_read_log, 0 to 100" },
+        claimed: { type: "number", description: "Optional: how many requests that rate was computed over" },
+      },
+    },
+  },
+  {
+    name: "aeo_alerts",
+    description:
+      "What changed on this site since the last check: a crawler that could reach it last week and "
+      + "cannot now, a check that was passing and is not, citations lost or gained. "
+      + "A crawler going dark usually means nobody touched the site and a CDN moved a default "
+      + "underneath it, which is the one problem an owner cannot notice on their own. "
+      + "Worth calling on a schedule rather than once.",
+    inputSchema: { type: "object", properties: {} },
   },
   {
     name: "aeo_crawler_intel",
@@ -252,6 +282,28 @@ async function hostedGet(path) {
     if (r.status === 402) return { error: body.error || "That tool needs a paid plan.", upgrade: "https://openaeo.dev/pricing" };
     if (!r.ok) return { error: body.error || ("openaeo.dev returned " + r.status) };
     return body;
+  } catch (e) {
+    return { error: e.name === "AbortError" ? "openaeo.dev timed out." : "Could not reach openaeo.dev." };
+  } finally { clearTimeout(t); }
+}
+
+async function hostedPost(path, body) {
+  const key = apiKey();
+  if (!key) return NEEDS_KEY;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 30000);
+  try {
+    const r = await fetch(API_BASE + path, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + key, "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body || {}),
+      signal: ctrl.signal,
+    });
+    const out = await r.json().catch(() => ({}));
+    if (r.status === 401) return { error: "That API key was not accepted.", how: NEEDS_KEY.how };
+    if (r.status === 402) return { error: out.error || "That tool needs a paid plan.", upgrade: "https://openaeo.dev/pricing" };
+    if (!r.ok) return { error: out.error || ("openaeo.dev returned " + r.status) };
+    return out;
   } catch (e) {
     return { error: e.name === "AbortError" ? "openaeo.dev timed out." : "Could not reach openaeo.dev." };
   } finally { clearTimeout(t); }
@@ -372,11 +424,37 @@ async function runTool(name, args) {
                  : "No AI crawler appears in this log. That is itself an answer: in this window, none visited." };
     }
     const rec = BL.reconcile(Array.isArray(args.bots) ? args.bots : [], parsed.bots);
-    return { stats: { lines: parsed.lines, parsed: parsed.parsed, unparsed: parsed.unparsed,
-                      crawlerRequests: parsed.botHits, format: parsed.format },
-             crawlers: parsed.bots, reconcile: rec,
-             privacy: "Parsed locally. Nothing from this log left your machine." };
+    const out = { stats: { lines: parsed.lines, parsed: parsed.parsed, unparsed: parsed.unparsed,
+                           crawlerRequests: parsed.botHits, format: parsed.format },
+                  crawlers: parsed.bots, authenticity: parsed.authenticity, reconcile: rec,
+                  privacy: "Parsed locally. Nothing from this log left your machine." };
+
+    // With a key, send the two numbers and get back where this site stands. The
+    // log is not sent, and cannot be: only rate and count travel. Without this,
+    // every log read through an agent was a corpus deposit nobody received, so
+    // agent users were quietly making the benchmark worse for everyone.
+    if (apiKey() && args.domain && parsed.authenticity && parsed.authenticity.rate !== null) {
+      const b = await hostedPost("/api/authenticity", {
+        domain: args.domain,
+        authenticity: { rate: parsed.authenticity.rate, claimed: parsed.authenticity.claimed },
+      });
+      if (b && !b.error) {
+        out.benchmark = b.benchmark;
+        out.privacy += " The rate and the request count were added to the corpus; the log was not.";
+      }
+    }
+    return out;
   }
+
+  if (name === "aeo_authenticity") {
+    if (args.rate === undefined || args.rate === null) return hostedGet("/api/authenticity");
+    return hostedPost("/api/authenticity", {
+      domain: args.domain,
+      authenticity: { rate: args.rate, claimed: args.claimed },
+    });
+  }
+
+  if (name === "aeo_alerts") return hostedGet("/api/alerts");
 
   if (name === "aeo_verify_crawler") {
     const BV = require("../src/botverify");
