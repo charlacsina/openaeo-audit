@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// OpenAEO CLI — audit a site for AI-search visibility from your terminal.
+// OpenAEO CLI, audit a site for AI-search visibility from your terminal.
 //   npx openaeo-audit yoursite.com
 //   npx openaeo-audit yoursite.com --json
 "use strict";
@@ -7,7 +7,7 @@
 const { audit, remediationPlan } = require("../src/audit");
 
 // `openaeo-audit mcp` starts the MCP server for Cursor / Claude Code.
-// Hand off before any stdout writing — MCP owns stdout for JSON-RPC.
+// Hand off before any stdout writing: MCP owns stdout for JSON-RPC.
 if (process.argv[2] === "mcp") { require("./mcp.js"); return; }
 
 // `openaeo-audit log access.log` reads a server log and reports what the AI
@@ -34,7 +34,7 @@ const MARK = { pass: C.green("✓"), warn: C.yellow("⚠"), fail: C.red("✗") }
 
 function usage() {
   console.log(`
-${C.bold("OpenAEO")} — quick AEO/GEO audit for AI-search visibility
+${C.bold("OpenAEO")}, quick AEO/GEO audit for AI-search visibility
 
 ${C.bold("Usage:")}
   npx openaeo-audit <domain>          Audit a site (pretty output)

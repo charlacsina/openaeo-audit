@@ -1,5 +1,5 @@
 // Platform detection + where-to-paste guidance.
-// Most small businesses don't have a codebase — their site is Squarespace, Wix,
+// Most small businesses don't have a codebase, their site is Squarespace, Wix,
 // Webflow, WordPress or Shopify. This turns "inject JSON-LD into <head>" into
 // "Settings → Advanced → Code Injection → Header", and is honest about the
 // things a given platform simply won't let you do.
@@ -65,10 +65,10 @@ const GUIDES = {
     robots: { can: true, note: "Built into site settings.",
       steps: ["Site settings → SEO tab", "Paste the rules into the robots.txt field", "Save, then Publish the site"] },
     llms: { can: false,
-      note: "Webflow can't host an arbitrary /llms.txt at the root. Options: put the site behind a proxy/CDN that serves it, or skip it — llms.txt is a nice-to-have, not a retrieval gate.",
+      note: "Webflow can't host an arbitrary /llms.txt at the root. Options: put the site behind a proxy/CDN that serves it, or skip it, llms.txt is a nice-to-have, not a retrieval gate.",
       steps: [] },
     jsonld: { can: true, note: "",
-      steps: ["Site settings → Custom Code", "Paste the JSON-LD into Head Code (site-wide) —",
+      steps: ["Site settings → Custom Code", "Paste the JSON-LD into Head Code (site-wide),",
               "or Page settings → Custom Code for a single page", "Save, then Publish"] },
     meta: { can: true, note: "",
       steps: ["Page settings → SEO", "Fill Title Tag and Meta Description", "Save, then Publish"] },
@@ -79,7 +79,7 @@ const GUIDES = {
               "Add the AI-crawler rules alongside the defaults", "Save"] },
     llms: { can: true, note: "Serve it as an asset or via a page.",
       steps: ["Edit code → Assets → Add a new asset → upload llms.txt",
-              "(Root-level serving may need an app or proxy — check the URL after)"] },
+              "(Root-level serving may need an app or proxy, check the URL after)"] },
     jsonld: { can: true, note: "",
       steps: ["Online Store → Themes → Edit code", "Layout → theme.liquid",
               "Paste the JSON-LD just before </head>", "Save"] },
@@ -104,7 +104,7 @@ const GUIDES = {
   framer: {
     robots: { can: true, note: "",
       steps: ["Site settings → General → Robots.txt", "Paste the rules", "Publish"] },
-    llms: { can: false, note: "Framer doesn't serve arbitrary root files. Skip it — it's not a gate.", steps: [] },
+    llms: { can: false, note: "Framer doesn't serve arbitrary root files. Skip it, it's not a gate.", steps: [] },
     jsonld: { can: true, note: "",
       steps: ["Site settings → General → Custom Code", "Paste the JSON-LD into 'Start of <head> tag'", "Publish"] },
     meta: { can: true, note: "",
@@ -119,7 +119,7 @@ const GUIDES = {
     meta: { can: true, note: "", steps: ["Post/page settings → Meta data", "Set title and description", "Save"] },
   },
   carrd: {
-    robots: { can: false, note: "Carrd doesn't expose robots.txt. Not a blocker — it allows crawlers by default.", steps: [] },
+    robots: { can: false, note: "Carrd doesn't expose robots.txt. Not a blocker, it allows crawlers by default.", steps: [] },
     llms: { can: false, note: "Not supported on Carrd.", steps: [] },
     jsonld: { can: true, note: "Requires a Pro plan for embed/code elements.",
       steps: ["Add an Embed element", "Set type to Code, paste the JSON-LD", "Publish"] },
@@ -157,7 +157,7 @@ function setupGuide(platformId, checks) {
     platform: id === "custom" ? "custom / self-hosted" : name,
     tasks,
     unsupported: tasks.filter(t => !t.supported).map(t => t.task),
-    tip: "Do the JSON-LD first — it's supported nearly everywhere and it's what tells assistants who you are.",
+    tip: "Do the JSON-LD first, it's supported nearly everywhere and it's what tells assistants who you are.",
   };
 }
 

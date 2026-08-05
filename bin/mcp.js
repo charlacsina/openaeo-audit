@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * OpenAEO MCP server — lets an AI coding agent (Cursor, Claude Code, or any
+ * OpenAEO MCP server, lets an AI coding agent (Cursor, Claude Code, or any
  * MCP client) audit a site for AI-search visibility and apply the fixes to
  * your local files, with your review.
  *
@@ -54,7 +54,7 @@ const TOOLS = [
     name: "aeo_fix_html",
     description:
       "Take a page's HTML and return it with the missing structural pieces injected into <head>: "
-      + "<title>, <meta name=description>, and Organization+WebSite JSON-LD. Only ADDS what's absent — "
+      + "<title>, <meta name=description>, and Organization+WebSite JSON-LD. Only ADDS what's absent, "
       + "never rewrites or deletes existing content. Returns the fixed HTML plus a before/after readiness "
       + "score. Use this on a local file, then write the result back.",
     inputSchema: {
@@ -73,7 +73,7 @@ const TOOLS = [
       "ONE-SHOT for people who don't have a codebase. Give it a domain and it audits the site, "
       + "detects the platform (Squarespace, Wix, Webflow, WordPress, Shopify, Framer, Ghost, Carrd or "
       + "custom), generates the exact files/snippets, and returns click-by-click instructions for where "
-      + "to paste each one in THAT platform's admin — including an honest note when a platform can't do "
+      + "to paste each one in THAT platform's admin, including an honest note when a platform can't do "
       + "something. Use this whenever the user isn't a developer or their site is on a website builder.",
     inputSchema: {
       type: "object",
@@ -90,7 +90,7 @@ const TOOLS = [
       "Generate an engineering packet for a domain (the open-source version): an ordered list of tickets, each with the audit "
       + "evidence that justifies it, where the change goes for that stack, implementation steps, "
       + "acceptance criteria, and an `agentPrompt` you can execute directly. Use this when the user "
-      + "wants you to actually FIX their site rather than just audit it — work the tickets in order, "
+      + "wants you to actually FIX their site rather than just audit it, work the tickets in order, "
       + "P1 first, showing the user each change before you make it.",
     inputSchema: {
       type: "object",
@@ -314,7 +314,7 @@ async function runTool(name, args) {
       readinessBefore: r.readinessBefore.score, readinessAfter: r.readinessAfter.score,
       unchanged: r.changes.length === 0,
       note: r.changes.length ? "Write `fixedHtml` back to the file. Replace any [bracketed] placeholders with real values."
-                             : "Nothing to inject — the page already has a title, meta description and Organization/WebSite JSON-LD.",
+                             : "Nothing to inject, the page already has a title, meta description and Organization/WebSite JSON-LD.",
     };
   }
   if (name === "aeo_fix_my_site") {
@@ -334,7 +334,7 @@ async function runTool(name, args) {
       tip: guide.tip,
       forTheUser:
         "Walk the user through this one task at a time, in their platform's own words. Show them the "
-        + "exact text to copy for each step. Do NOT fill in the [bracketed] placeholders yourself — ask "
+        + "exact text to copy for each step. Do NOT fill in the [bracketed] placeholders yourself, ask "
         + "them for their real prices, counts and dates, or leave the brackets for them.",
     };
   }
@@ -351,7 +351,7 @@ async function runTool(name, args) {
       alsoAvailable: pk.upgrade,
       forTheAgent:
         "Work these in order, P1 before P2. For each ticket: show the user the change first, then apply it. "
-        + "Never invent values for [BRACKETS] — ask the user. Never write schema for content that isn't "
+        + "Never invent values for [BRACKETS], ask the user. Never write schema for content that isn't "
         + "visible on the page. After the tickets are done, re-run aeo_audit to confirm the score moved.",
     };
   }
@@ -402,12 +402,12 @@ async function handle(msg) {
       capabilities: { tools: {} },
       serverInfo: SERVER,
       instructions: [
-        "OpenAEO audits a website for AI-search visibility (AEO/GEO) — whether ChatGPT, Claude,",
-        "Gemini and Perplexity can read, trust and cite it — and generates the fixes.",
+        "OpenAEO audits a website for AI-search visibility (AEO/GEO), whether ChatGPT, Claude,",
+        "Gemini and Perplexity can read, trust and cite it, and generates the fixes.",
         "",
         "FIRST, work out which kind of user you have:",
         "- No codebase / site is on Squarespace, Wix, Webflow, WordPress, Shopify, Framer, Ghost,",
-        "  Carrd — or they just gave you a domain and aren't a developer:",
+        "  Carrd, or they just gave you a domain and aren't a developer:",
         "  use aeo_fix_my_site. It returns click-by-click steps for THEIR platform's admin.",
         "  Walk them through one task at a time and paste the exact text for each step.",
         "- They have the site's source open in this project: use the workflow below.",
@@ -427,14 +427,14 @@ async function handle(msg) {
         "from addresses the operator does not own, which is a different problem and a real one.",
         "",
         "Rules:",
-        "- Generated files contain [bracketed] placeholders. NEVER invent values for them —",
+        "- Generated files contain [bracketed] placeholders. NEVER invent values for them:",
         "  no fake prices, review counts, founding years, addresses or social URLs. Ask the user",
         "  for the real numbers, or leave the brackets in place for them to fill.",
         "- aeo_fix_html only ADDS missing head elements; it never rewrites page content. Don't",
         "  ask it to do more than that.",
         "- Show the user each file you're about to write and let them confirm.",
         "- A failing retrieval gate (JS-only rendering, blocked bots, robots.txt disallow) caps the",
-        "  whole score — fix those before tuning schema or copy.",
+        "  whole score, fix those before tuning schema or copy.",
       ].join("\n"),
     });
   }

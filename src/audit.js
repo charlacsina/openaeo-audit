@@ -1,4 +1,4 @@
-// OpenAEO — quick AEO/GEO audit engine.
+// OpenAEO, quick AEO/GEO audit engine.
 // Fetches a URL the way an AI crawler (GPTBot) would, then scores how
 // retrievable and citable the page is for AI answer engines (ChatGPT, Claude,
 // Gemini, Perplexity). Pure Node, zero dependencies (needs Node 18+ for fetch).
@@ -321,14 +321,14 @@ async function audit(url) {
 
 // ---- remediation ----------------------------------------------------------
 const FIX_LIBRARY = {
-  "raw html": { title: "Prerender content so crawlers get real HTML", check: "Content readable in raw HTML", why: "AI crawlers do not run your JavaScript. If content only appears after hydration, they receive an empty page — this caps your whole score.", how: "Server-render or statically prerender the page so the full markup is in the first HTTP response." },
+  "raw html": { title: "Prerender content so crawlers get real HTML", check: "Content readable in raw HTML", why: "AI crawlers do not run your JavaScript. If content only appears after hydration, they receive an empty page, this caps your whole score.", how: "Server-render or statically prerender the page so the full markup is in the first HTTP response." },
   "robots": { title: "Unblock AI crawlers in robots.txt", check: "robots.txt allows GPTBot, ClaudeBot, PerplexityBot", why: "A single inherited Disallow line can hide you from ChatGPT and Perplexity entirely.", how: "Explicitly Allow GPTBot, OAI-SearchBot, ClaudeBot, Claude-SearchBot, PerplexityBot, Google-Extended and link your sitemap." },
   "llms": { title: "Publish an llms.txt index", check: "llms.txt index present", why: "llms.txt is an emerging convention that hands assistants a clean, quotable summary of your site.", how: "Add /llms.txt: one-line description, key pages with what's on each, and a short list of verifiable facts." },
   "organization": { title: "Add Organization + WebSite JSON-LD", check: "Organization + WebSite JSON-LD", why: "Structured identity is how assistants know who you are and connect your name to your site.", how: "Add an Organization node (name, url, sameAs) and a WebSite node in a JSON-LD <script>." },
   "offer": { title: "Add Product/Offer schema with price", check: "Product / Offer schema with price", why: "A priced Offer lets assistants answer 'how much does X cost' with your real number.", how: "Add a Product with an Offer { price, priceCurrency } that mirrors your visible pricing." },
   "answer": { title: "Rewrite the first 100 words to answer + cite a number", check: "Answer + a number in the first 100 words", why: "Assistants lift the first concrete, specific sentence. Adjectives don't get quoted; numbers do.", how: "Lead with what you are, who it's for, and one verifiable specific (a price, a count, a founding year)." },
   "faqpage": { title: "Add FAQPage schema mirroring visible Q&A", check: "FAQPage schema present", why: "FAQPage schema maps directly onto the question-shaped queries people type into assistants.", how: "Wrap your real on-page Q&A in FAQPage / Question / acceptedAnswer JSON-LD." },
-  "freshness": { title: "Emit a truthful dateModified", check: "Freshness (dateModified) present", why: "Assistants prefer sources that signal they're current.", how: "Add a truthful dateModified to your schema and keep it accurate — do not fake it." },
+  "freshness": { title: "Emit a truthful dateModified", check: "Freshness (dateModified) present", why: "Assistants prefer sources that signal they're current.", how: "Add a truthful dateModified to your schema and keep it accurate, do not fake it." },
 };
 const FIX_ORDER = ["raw html", "robots", "llms", "organization", "offer", "answer", "faqpage", "freshness"];
 

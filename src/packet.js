@@ -1,4 +1,4 @@
-// Engineering packet — turns an audit into tickets a human (or a coding agent)
+// Engineering packet, turns an audit into tickets a human (or a coding agent)
 // can execute without us in the room.
 //
 // Every ticket carries: the audit evidence that justifies it, stack-specific
@@ -12,7 +12,7 @@
 
 // ---- competitor evidence ---------------------------------------------------
 // The "here's who is being recommended instead of you" section. Built ONLY from
-// the user's own citation runs — real answers from real assistants for their
+// the user's own citation runs, real answers from real assistants for their
 // real prompts. Nothing here is inferred or invented; if there are no runs, the
 // section is omitted rather than filled with plausible-sounding guesses.
 const PLATFORMS = new Set(["reddit.com","youtube.com","facebook.com","twitter.com","x.com",
@@ -57,11 +57,11 @@ function competitorEvidence(citationRuns, clientDomain, knownCompetitors) {
     roundups: ranked.filter(e => !e.isCompetitor && !e.isPlatform).slice(0, 10).map(shape),
     community: ranked.filter(e => e.isPlatform).slice(0, 5).map(shape),
     note: "Every domain below was named by an assistant in response to your own target prompts on "
-        + (run.date || "the last run") + ". Mock results are excluded — this is only real answers.",
+        + (run.date || "the last run") + ". Mock results are excluded, this is only real answers.",
   };
 }
 
-const EFFORT = { S: "S (under an hour)", M: "M (half a day)", L: "L (1–2 days)", XL: "XL (project — scope with the team)" };
+const EFFORT = { S: "S (under an hour)", M: "M (half a day)", L: "L (1–2 days)", XL: "XL (project, scope with the team)" };
 
 // Where the fix physically goes, per platform. Keeps the packet actionable for
 // a Squarespace owner and a Next.js team alike.
@@ -69,7 +69,7 @@ const STACK_HINTS = {
   squarespace: {
     head: "Settings → Advanced → Code Injection → HEADER",
     file: "Code Injection (Squarespace has no repo)",
-    robots: "Squarespace manages robots.txt and it already allows the major AI crawlers — skip this ticket.",
+    robots: "Squarespace manages robots.txt and it already allows the major AI crawlers, skip this ticket.",
     agent: false,
   },
   wix: { head: "Marketing & SEO → SEO Settings → the page → Advanced SEO → Structured Data",
@@ -90,11 +90,11 @@ const TICKETS = [
   {
     match: /raw HTML/i, id: "G1", gate: "G1", effort: "XL", owner: "Frontend / platform",
     title: "Server-render substantive copy so crawlers get real HTML",
-    value: "Uncaps the entire score — nothing else counts until this passes",
+    value: "Uncaps the entire score, nothing else counts until this passes",
     why: "AI crawlers don't run JavaScript. If your copy only appears after hydration, an assistant receives an empty shell and cannot quote you at all.",
     impl: h => [
       "Inventory which routes are server-rendered vs client-rendered.",
-      "Verify per template: curl -s https://YOURDOMAIN/<route> | grep \"<a sentence you can see on the page>\" — no match means that copy is invisible to crawlers.",
+      "Verify per template: curl -s https://YOURDOMAIN/<route> | grep \"<a sentence you can see on the page>\", no match means that copy is invisible to crawlers.",
       "Move substantive copy into server-rendered components; keep only interactivity client-side.",
       "Re-check with the same curl until your headline and body copy appear in the raw response.",
     ],
@@ -111,7 +111,7 @@ const TICKETS = [
     why: "robots.txt is checked before anything else is fetched. One stale line from a relaunch can make you invisible for months without any other symptom.",
     impl: h => ["Open " + h.robots + ".",
                 "Add explicit Allow rules for GPTBot, OAI-SearchBot, ChatGPT-User, ClaudeBot, Claude-SearchBot, PerplexityBot, Google-Extended, Bingbot and Applebot.",
-                "Keep your existing rules — merge, don't replace.",
+                "Keep your existing rules, merge, don't replace.",
                 "Confirm it serves at https://YOURDOMAIN/robots.txt."],
     accept: ["/robots.txt returns 200 and lists the AI user-agents with Allow: /",
              "No Disallow: / applies to those agents"],
@@ -127,11 +127,11 @@ const TICKETS = [
     impl: h => ["Create /llms.txt at your static root.",
                 "One line on what the business does and who it's for.",
                 "List your key pages with one line each on what's on them.",
-                "Add 2–4 verifiable facts (a price, a count, a founding year) — no marketing adjectives."],
+                "Add 2–4 verifiable facts (a price, a count, a founding year), no marketing adjectives."],
     accept: ["/llms.txt returns 200", "Contains no unresolved [BRACKETS]"],
     cmd: d => `curl -sI https://${d}/llms.txt | head -1   # expect 200`,
     points: 4, phase: 1, needs: ["A one-line description of what the business does and who it is for", "2-4 verifiable facts (a price, a count, a founding year)"],
-    agent: "Create an llms.txt at the static root following the llms.txt convention. Use only facts you can verify from the site's own content — leave [BRACKETS] for anything you cannot confirm and tell the user what to fill in.",
+    agent: "Create an llms.txt at the static root following the llms.txt convention. Use only facts you can verify from the site's own content, leave [BRACKETS] for anything you cannot confirm and tell the user what to fill in.",
   },
   {
     match: /Organization \+ WebSite/i, id: "B1", gate: "B1", effort: "M", owner: "Frontend",
@@ -140,13 +140,13 @@ const TICKETS = [
     why: "Without structured identity an assistant has to guess whether your brand name refers to your business. Schema removes the guess.",
     impl: h => ["Add a JSON-LD <script> in " + h.head + ".",
                 "Include an Organization node (name, url, sameAs) and a WebSite node.",
-                "sameAs must list profiles you actually control — leave [VERIFY] markers rather than guessing.",
+                "sameAs must list profiles you actually control, leave [VERIFY] markers rather than guessing.",
                 "Validate at validator.schema.org before shipping."],
     accept: ["Page source contains valid Organization and WebSite JSON-LD",
              "No unresolved [VERIFY] markers remain", "validator.schema.org reports no errors"],
     cmd: d => `curl -s https://${d}/ | grep -o '"@type":"Organization"' | head -1`,
     points: 8, phase: 1, needs: ["Your LinkedIn / X / other profile URLs for sameAs (we will not guess these)"],
-    agent: "Add Organization and WebSite JSON-LD to the site's <head> template. Derive name and url from the site itself. For sameAs, leave [VERIFY: ...] placeholders — do NOT invent social URLs. Validate the JSON parses.",
+    agent: "Add Organization and WebSite JSON-LD to the site's <head> template. Derive name and url from the site itself. For sameAs, leave [VERIFY: ...] placeholders, do NOT invent social URLs. Validate the JSON parses.",
   },
   {
     match: /Product \/ Offer/i, id: "B4", gate: "B4", effort: "M", owner: "Frontend + whoever owns pricing",
@@ -154,7 +154,7 @@ const TICKETS = [
     value: "Lets assistants answer \"how much does it cost\" with your number instead of a competitor's",
     why: "Priced Offer schema is what turns a pricing page into a quotable answer. It must mirror the price actually visible on the page.",
     impl: h => ["On the pricing page, add Product schema with an Offer (price, priceCurrency, availability).",
-                "The price in schema MUST equal the price shown on the page — mismatches get discounted.",
+                "The price in schema MUST equal the price shown on the page, mismatches get discounted.",
                 "If pricing is quote-based, publish a starting-from number or skip this ticket honestly."],
     accept: ["Pricing page carries a priced Offer", "Schema price matches the visible price exactly"],
     cmd: d => `curl -s https://${d}/pricing | grep -o '"price"[^,]*' | head -3`,
@@ -164,17 +164,17 @@ const TICKETS = [
   {
     match: /first 100 words/i, id: "C1", gate: "C1", effort: "M", owner: "Content",
     title: "Rewrite the opening 100 words to answer, with a number",
-    value: "Assistants quote the first concrete sentence — adjectives don't get cited, specifics do",
+    value: "Assistants quote the first concrete sentence, adjectives don't get cited, specifics do",
     why: "The opening of your key pages is what gets lifted into an answer. \"Premium, best-in-class\" is unquotable; \"$24, 300+ sold since 2019\" is.",
     impl: h => ["Open each key page with what you are, who it's for, and one verifiable specific.",
-                "Put it in the first 100 words of visible copy — not below the fold.",
+                "Put it in the first 100 words of visible copy, not below the fold.",
                 "Make sure <title> and <meta name=\"description\"> agree with that opening.",
                 "Use real numbers only; leave [BRACKETS] for anything unverified."],
     accept: ["First 100 words contain the category, the audience and at least one number",
              "title/meta/H1 agree semantically"],
     cmd: d => `curl -s https://${d}/ | sed 's/<[^>]*>/ /g' | tr -s " " | head -c 700 | grep -oE "[0-9]+"`,
     points: 9, phase: 2, needs: ["One verifiable specific per key page: a price, a customer count, a founding year, or a city"],
-    agent: "Draft a rewritten opening paragraph for each key page. Use ONLY specifics you can verify from the existing site content; put [BRACKETS] around anything you cannot confirm and list them for the user. Present the draft for approval — do not publish copy changes silently.",
+    agent: "Draft a rewritten opening paragraph for each key page. Use ONLY specifics you can verify from the existing site content; put [BRACKETS] around anything you cannot confirm and list them for the user. Present the draft for approval, do not publish copy changes silently.",
   },
   {
     match: /FAQPage/i, id: "B3", gate: "B3", effort: "M", owner: "Content + frontend",
@@ -184,17 +184,17 @@ const TICKETS = [
     impl: h => ["Write (or collect) 8–12 questions customers actually ask.",
                 "Answer each in 40–80 words, self-contained, with a specific.",
                 "Publish them visibly on the page, then mirror them in FAQPage JSON-LD.",
-                "Schema must match the visible text — don't add questions only to the schema."],
+                "Schema must match the visible text, don't add questions only to the schema."],
     accept: ["FAQ page shows the Q&A visibly", "FAQPage JSON-LD mirrors it exactly", "8+ questions"],
     cmd: d => `curl -s https://${d}/faq | grep -o '"@type":"Question"' | wc -l   # expect >= 8`,
     points: 6, phase: 2, needs: ["8-12 questions customers actually ask, with your real answers"],
-    agent: "Add FAQPage JSON-LD that mirrors the Q&A ALREADY VISIBLE on the page. If there is no visible FAQ, draft one from the site's existing content for the user to approve first — never ship schema for Q&A that isn't on the page.",
+    agent: "Add FAQPage JSON-LD that mirrors the Q&A ALREADY VISIBLE on the page. If there is no visible FAQ, draft one from the site's existing content for the user to approve first, never ship schema for Q&A that isn't on the page.",
   },
   {
     match: /Freshness|dateModified/i, id: "B7", gate: "B7", effort: "S", owner: "Frontend",
     title: "Emit a truthful dateModified",
     value: "Assistants prefer sources that signal they're current",
-    why: "A missing freshness signal makes a current page look stale. A faked one is worse — it's the kind of thing that gets a source discounted.",
+    why: "A missing freshness signal makes a current page look stale. A faked one is worse, it's the kind of thing that gets a source discounted.",
     impl: h => ["Add dateModified to your page schema, wired to the real last-modified date.",
                 "Surface a visible \"Updated <date>\" that matches it.",
                 "Never bump the date without a real content change."],
@@ -220,7 +220,7 @@ function ticketsFor(auditResult, platformId) {
       id: "AEO-" + String(n).padStart(2, "0"),
       rubric: def.gate,
       // VERIFIED = the crawl proved this gap (fail). POTENTIAL = it may already
-      // partly pass (warn) — those raise the ceiling, never the forecast.
+      // partly pass (warn), those raise the ceiling, never the forecast.
       confidence: check.status === "fail" ? "verified" : "potential",
       points: def.points || 0,
       phase: def.phase == null ? 3 : def.phase,
@@ -232,7 +232,7 @@ function ticketsFor(auditResult, platformId) {
       priority: check.status === "fail" ? "P1" : "P2",
       value: def.value,
       why: def.why,
-      evidence: check.label + " — " + check.detail,
+      evidence: check.label + ": " + check.detail,
       where: def.id === "G3" ? h.robots : h.head,
       implementation: def.impl(h),
       acceptance: def.accept,
@@ -253,7 +253,7 @@ function buildPacket(auditResult, opts) {
   const p1 = tickets.filter(t => t.priority === "P1").length;
   // Honest projection. Shipping these tickets clears the headline checks, but the
   // full rubric also scores off-site consensus (reviews, third-party roundups,
-  // community mentions) and measurement — none of which a code change can fix.
+  // community mentions) and measurement, none of which a code change can fix.
   // So we cap the on-site projection at the top of AI-competitive (82) and say
   // plainly that 83+ needs off-site work. Never project a perfect score.
   const passing = (auditResult.checks || []).filter(c => c.status === "pass").length;
@@ -263,9 +263,9 @@ function buildPacket(auditResult, opts) {
   const raw = Math.min(Math.round(((passing + tickets.length) / total) * 100), ON_SITE_CEILING);
 
   // Phase table. Projections count VERIFIED points only; potential points raise
-  // the ceiling but never the forecast — the same discipline as the hand-built packets.
-  const PHASE_NAME = { 0: "Phase 0 — the gate (do this first)", 1: "Phase 1 — quick wins",
-                       2: "Phase 2 — big bets", 3: "Phase 3 — fill-ins" };
+  // the ceiling but never the forecast, the same discipline as the hand-built packets.
+  const PHASE_NAME = { 0: "Phase 0, the gate (do this first)", 1: "Phase 1, quick wins",
+                       2: "Phase 2, big bets", 3: "Phase 3, fill-ins" };
   const phases = [0, 1, 2, 3].map(ph => {
     const inPhase = tickets.filter(t => t.phase === ph);
     const verified = inPhase.filter(t => t.confidence === "verified").reduce((n, t) => n + t.points, 0);
@@ -277,7 +277,7 @@ function buildPacket(auditResult, opts) {
   let running = auditResult.score;
   for (const ph of phases) { running = Math.min(running + ph.verifiedPts, ON_SITE_CEILING); ph.projected = running; }
 
-  // Everything the owner must supply, deduped — the "send this list" section.
+  // Everything the owner must supply, deduped, the "send this list" section.
   const askSet = new Set();
   tickets.forEach(t => (t.needsFromYou || []).forEach(x => askSet.add(x)));
   const h2 = hints(platform);
@@ -287,7 +287,7 @@ function buildPacket(auditResult, opts) {
 
   // ---- tier split ----------------------------------------------------------
   // free  = the open-source packet: tickets you can act on, no infrastructure.
-  // solo+ = adds what needs a server or paid APIs behind it — the representative
+  // solo+ = adds what needs a server or paid APIs behind it, the representative
   //         crawl, the phase plan, and competitor evidence from live citation runs.
   const tier = (opts.tier || "solo").toLowerCase();
   if (tier === "free") {
@@ -306,7 +306,7 @@ function buildPacket(auditResult, opts) {
         acceptanceCommand: t.acceptanceCommand, agentPrompt: t.agentPrompt,
       })),
       notes: [
-        "This is the open-source packet — everything here runs locally with no account (npx openaeo-audit).",
+        "This is the open-source packet, everything here runs locally with no account (npx openaeo-audit).",
         "Anything we could not verify from your site ships as a [BRACKET]. We do not invent prices, counts, dates or profile URLs.",
       ],
       upgrade: {
@@ -330,7 +330,7 @@ function buildPacket(auditResult, opts) {
     summary: {
       today: auditResult.score,
       band: auditResult.band,
-      // verified-only forecast (last phase's running total) — never the optimistic one
+      // verified-only forecast (last phase's running total), never the optimistic one
       projected: phases.length ? phases[phases.length - 1].projected : auditResult.score,
       ceiling: raw,
       verdict: auditResult.verdict,
@@ -346,7 +346,7 @@ function buildPacket(auditResult, opts) {
     notes: [
       "Every ticket below is justified by evidence from the crawl of " + auditResult.domain + " on " + new Date().toISOString().slice(0, 10) + ".",
       "Anything we could not verify from your site ships as a [BRACKET] for you to fill. We do not invent prices, counts, dates or profile URLs.",
-      "The projected score is what these on-site tickets can reach. It is capped at 82 on purpose: the rubric also scores off-site consensus — reviews, third-party roundups, community mentions — which no code change can fix. 83+ (AI-dominant) needs that separate off-site track.",
+      "The projected score is what these on-site tickets can reach. It is capped at 82 on purpose: the rubric also scores off-site consensus, reviews, third-party roundups, community mentions, which no code change can fix. 83+ (AI-dominant) needs that separate off-site track.",
       "We will not project a perfect score. If a tool promises you 100/100 from code changes alone, it is not counting the same things.",
     ],
   };

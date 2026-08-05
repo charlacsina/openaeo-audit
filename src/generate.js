@@ -1,4 +1,4 @@
-// Fix generators — deterministic, zero-dependency.
+// Fix generators, deterministic, zero-dependency.
 // Produces the actual files an AI-citable site needs (robots.txt, llms.txt,
 // JSON-LD) and can apply the safe structural fixes directly to a page's HTML.
 // No LLM, no network: everything here is derived from the input.
@@ -19,13 +19,13 @@ function today() { return new Date().toISOString().slice(0, 10); }
 /** robots.txt that explicitly allows the AI crawlers that matter. */
 function robotsTxt(domain) {
   const dom = cleanDomain(domain) || "your-site.com";
-  return "# " + dom + " — AI crawlers allowed\n"
+  return "# " + dom + ": AI crawlers allowed\n"
     + AI_BOTS.map(b => "User-agent: " + b + "\nAllow: /").join("\n")
     + "\n\nUser-agent: *\nAllow: /\nDisallow: /account/\nDisallow: /api/\n\n"
     + "Sitemap: https://" + dom + "/sitemap.xml\n";
 }
 
-/** llms.txt — a clean, quotable index for assistants. Brackets are yours to fill. */
+/** llms.txt, a clean, quotable index for assistants. Brackets are yours to fill. */
 function llmsTxt(domain, brand) {
   const dom = cleanDomain(domain) || "your-site.com";
   brand = brand || dom.split(".")[0];
@@ -58,7 +58,7 @@ function jsonLd(domain, brand) {
 function openingRewrite(domain, brand) {
   const dom = cleanDomain(domain) || "your-site.com";
   brand = brand || dom.split(".")[0];
-  return brand + " is a [category] that [what you do] — [one verifiable specific: a price, "
+  return brand + " is a [category] that [what you do]. [One verifiable specific: a price, "
     + "a count, or a founding year]. [City, if you serve one.] Replace the brackets with your "
     + "real numbers; specifics are what assistants quote.";
 }
@@ -72,7 +72,7 @@ function fixFiles(domain, brand) {
     llms: llmsTxt(dom, brand),
     jsonld: jsonLd(dom, brand),
     rewrite: openingRewrite(dom, brand),
-    note: "robots.txt, llms.txt and the JSON-LD are paste-ready. The rewrite is a draft — "
+    note: "robots.txt, llms.txt and the JSON-LD are paste-ready. The rewrite is a draft: "
         + "fill the [brackets] with your real numbers before publishing.",
   };
 }
@@ -102,7 +102,7 @@ function visibleFirst(html, n = 100) {
     .replace(/<[^>]+>/g, " ").split(/\s+/).filter(Boolean).slice(0, n).join(" ");
 }
 
-/** The HTML-derivable subset of the rubric — what one page can satisfy on its own. */
+/** The HTML-derivable subset of the rubric, what one page can satisfy on its own. */
 function htmlReadiness(html) {
   const types = ldTypes(html);
   const checks = [
@@ -126,7 +126,7 @@ function injectHead(html, snippet) {
 
 /**
  * Apply the safe structural fixes to a page's HTML.
- * Only ever ADDS what's missing — never rewrites or deletes your content.
+ * Only ever ADDS what's missing, never rewrites or deletes your content.
  */
 function applyFixes(html, brand, domain) {
   const dom = cleanDomain(domain) || ((brand || "your-site").toLowerCase().replace(/\s+/g, "") + ".com");
@@ -134,13 +134,13 @@ function applyFixes(html, brand, domain) {
   const before = html; let out = html; const changes = [];
 
   if (!/<title[^>]*>\s*\S/i.test(out)) {
-    out = injectHead(out, "<title>" + brand + " — [what you do, in 5 words]</title>");
+    out = injectHead(out, "<title>" + brand + ": [what you do, in 5 words]</title>");
     changes.push({ label: "Added <title>", detail: "replace the bracket with your real headline" });
   }
   if (!/<meta[^>]+name=["']description["'][^>]+content=["']\s*\S/i.test(out)) {
     out = injectHead(out, '<meta name="description" content="' + brand
-      + ' — [one specific sentence: what you do, who for, one number].">');
-    changes.push({ label: "Added <meta name=description>", detail: "placeholder — replace with a real specific" });
+      + '. [One specific sentence: what you do, who for, one number].">');
+    changes.push({ label: "Added <meta name=description>", detail: "placeholder, replace with a real specific" });
   }
   const types = ldTypes(out);
   if (!(types.has("Organization") && types.has("WebSite"))) {
