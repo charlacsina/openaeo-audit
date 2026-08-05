@@ -3,7 +3,7 @@
   "name": "dev.openaeo/audit",
   "title": "OpenAEO",
   "description": "Asks 8 AI crawlers for your page, checks who really answered, and writes the fixes. MIT.",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "websiteUrl": "https://openaeo.dev/mcp",
   "repository": {
     "url": "https://github.com/charlacsina/openaeo-audit",
@@ -14,7 +14,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "openaeo-audit",
-      "version": "1.5.0",
+      "version": "1.6.0",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
