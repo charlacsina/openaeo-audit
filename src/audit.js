@@ -65,7 +65,17 @@ function pageKind(pathname, types) {
 const MONEY_RE = /(?:[$£€¥]\s?\d|\b\d+(?:\.\d+)?\s?(?:usd|eur|gbp)\b|\bper month\b|\/mo\b)/i;
 
 function faqMirrorRate(blocks, text) {
-  const norm = t => String(t || "").replace(/\s+/g, " ").trim().toLowerCase();
+  // Flattening a page turns every tag boundary into a space, so an answer that
+  // links a single word ("the list lives on <a>pricing</a>.") comes out with a
+  // space before the full stop while the JSON-LD has none. The copy is
+  // identical and only the markup differs, but comparing them raw scored such
+  // an answer as unmirrored. Linking inside an FAQ answer is ordinary, so this
+  // quietly cost sites points for doing nothing wrong. Both sides normalise.
+  const norm = t => String(t || "")
+    .replace(/\s+/g, " ")
+    .replace(/\s+([.,;:!?%)\]}])/g, "$1")
+    .replace(/([(\[{])\s+/g, "$1")
+    .trim().toLowerCase();
   const visible = norm(text);
   const answers = [];
   const walk = n => {
