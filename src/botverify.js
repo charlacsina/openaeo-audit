@@ -203,9 +203,33 @@ function classify(ip, botName, ranges) {
   if (!entry.ok) return { status: "unverifiable", why: "the operator's range feed did not load, so we will not judge this" };
 
   for (const p of entry.prefixes) {
-    if (ipInPrefix(ip, p)) return { status: "verified", why: "inside " + entry.op + "'s published range", op: entry.op };
+    if (ipInPrefix(ip, p)) {
+      return { status: "verified", basis: "range-match", op: entry.op,
+               why: "inside " + entry.op + "'s published range"
+                  + (entry.creationTime ? ", published " + String(entry.creationTime).slice(0, 10) : "") };
+    }
   }
-  return { status: "impostor", why: "outside every range " + entry.op + " publishes for this crawler", op: entry.op };
+  // Three outcomes on the negative side, not two, because they are three
+  // different facts:
+  //
+  //   impostor          positive evidence, a PTR naming an operator it cannot
+  //                     prove. Only ever set by the reverse DNS pass.
+  //   outside-range     the address is not in the operator's published list.
+  //                     Actionable and worth showing, but a list we downloaded
+  //                     lags whatever the operator added since, so it is not
+  //                     proof of spoofing.
+  //   unverifiable      we could not check at all: no feed, feed down, no
+  //                     address.
+  //
+  // Collapsing outside-range into impostor made a stale feed and a spoofing
+  // spike identical. Collapsing it into unverifiable threw away the signal
+  // entirely and left an offline log unable to flag anything.
+  return { status: "outside-range", basis: "range-miss", op: entry.op,
+           why: "not in the copy of " + entry.op + "'s range file we fetched"
+              + (entry.creationTime ? ", which the operator published "
+                 + String(entry.creationTime).slice(0, 10) : "")
+              + ". Worth looking at, but that file can lag address space the "
+              + "operator has already added, so this is not proof of spoofing." };
 }
 
 // ---- forward-confirmed reverse DNS ------------------------------------------
@@ -275,17 +299,28 @@ async function verifyRdns(ip, botName) {
 // here, and an address rDNS cannot confirm stays exactly as the range check left
 // it: "unverifiable" does not become "impostor" because a DNS lookup timed out.
 async function enrichWithRdns(entries) {
-  const todo = entries.filter(e => e.status !== "verified" && RDNS_SUFFIX[String(e.bot || "").toLowerCase()])
+  // Range-verified rows are included now. A forward-confirmed PTR is a stronger
+  // claim than membership of a list we downloaded, so where an operator
+  // publishes a convention it is worth asking even when the range already
+  // matched: the answer upgrades the basis, and that is what a reader filters on.
+  const todo = entries.filter(e => RDNS_SUFFIX[String(e.bot || "").toLowerCase()])
                       .slice(0, RDNS_MAX);
   for (let i = 0; i < todo.length; i += RDNS_CONCURRENCY) {
     const slice = todo.slice(i, i + RDNS_CONCURRENCY);
     await Promise.all(slice.map(async e => {
       const r = await verifyRdns(e.ip, e.bot);
       e.rdns = r.status;
-      if (r.status === "confirmed") { e.status = "verified"; e.why = r.why; e.via = "rdns"; }
-      else if (r.status === "mismatch" && e.status === "unverifiable") {
+      if (r.status === "confirmed") {
+        e.status = "verified"; e.why = r.why; e.via = "rdns";
+        e.basis = "rdns-confirmed";     // the stronger of the two, so it wins
+      } else if (r.status === "mismatch" && e.status === "verified") {
+        // Inside the operator's own published range, but the PTR names someone
+        // it cannot prove. Both signals are real and they disagree, so say so
+        // rather than picking one silently.
+        e.basisConflict = "in the published range, but reverse DNS did not confirm";
+      } else if (r.status === "mismatch" && e.status !== "verified") {
         // A PTR that names an operator it cannot prove is positive evidence.
-        e.status = "impostor"; e.why = r.why;
+        e.status = "impostor"; e.basis = "rdns-mismatch"; e.why = r.why;
       }
     }));
   }

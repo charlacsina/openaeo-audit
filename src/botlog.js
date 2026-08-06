@@ -139,6 +139,9 @@ function parseAccessLog(text, ranges) {
     if (!e) {
       e = { bot: bot.name, surface: bot.surface, hits: 0, statuses: {}, vStatuses: {}, uStatuses: {},
             paths: new Map(), ips: new Map(), verified: 0, impostor: 0, unverifiable: 0,
+            // A forward-confirmed PTR and a range match are not the same
+            // claim, so they are counted apart. See lib/botverify.js.
+            byRdns: 0, byRange: 0, rangeMiss: 0,
             firstSeen: rec.ts || null, lastSeen: rec.ts || null, whyUnverifiable: null };
       byBot.set(bot.name, e);
     }
@@ -156,7 +159,7 @@ function parseAccessLog(text, ranges) {
       if (seen) { seen.n++; cls = seen.status; }
       else {
         const c = BV.classify(rec.ip, bot.name, ranges);
-        e.ips.set(rec.ip, { n: 1, status: c.status, why: c.why });
+        e.ips.set(rec.ip, { n: 1, status: c.status, basis: c.basis, why: c.why });
         cls = c.status;
         if (!e.whyUnverifiable && c.status === "unverifiable") e.whyUnverifiable = c.why;
       }
@@ -174,11 +177,17 @@ function parseAccessLog(text, ranges) {
   const bots = [];
   for (const e of byBot.values()) {
     for (const [, v] of e.ips) {
-      if (v.status === "verified") e.verified += v.n;
-      else if (v.status === "impostor") e.impostor += v.n;
+      if (v.status === "verified") {
+        e.verified += v.n;
+        if (v.basis === "rdns-confirmed") e.byRdns += v.n; else e.byRange += v.n;
+      } else if (v.status === "impostor") e.impostor += v.n;
+      else if (v.status === "outside-range") e.rangeMiss += v.n;
       else e.unverifiable += v.n;
     }
-    const noIp = e.hits - (e.verified + e.impostor + e.unverifiable);
+    // rangeMiss is its own bucket now, so it has to be in this sum or every
+    // unlisted address is counted twice: once as outside-range and again as
+    // an unaccounted hit, which then wins the outcome ladder.
+    const noIp = e.hits - (e.verified + e.impostor + e.unverifiable + e.rangeMiss);
     if (noIp > 0) e.unverifiable += noIp;
 
     // Judge on verified traffic when we have any, and say which basis was used so
@@ -193,6 +202,10 @@ function parseAccessLog(text, ranges) {
     let outcomeBasis, basis;
     if (e.verified > 0) { outcomeBasis = "verified"; basis = e.vStatuses; }
     else if (e.unverifiable > 0) { outcomeBasis = "unverified"; basis = e.uStatuses; }
+    // Everything this crawler sent came from addresses the operator does not
+    // list. That is worth saying out loud, and it is not the same accusation as
+    // impostor-only, which now means a reverse DNS record we caught lying.
+    else if (e.rangeMiss > 0) { outcomeBasis = "outside-range-only"; basis = {}; }
     else { outcomeBasis = "impostor-only"; basis = {}; }
 
     let served = 0, refused = 0;
@@ -203,18 +216,25 @@ function parseAccessLog(text, ranges) {
     }
 
     const impostorIps = [];
-    for (const [ip, v] of e.ips) if (v.status === "impostor") impostorIps.push(ip);
+    // Unlisted addresses belong here too. This list is what names the
+    // addresses in the finding, and keying it on impostor alone meant the
+    // rename emptied it.
+    for (const [ip, v] of e.ips) {
+      if (v.status === "impostor" || v.status === "outside-range") impostorIps.push(ip);
+    }
 
     bots.push({
       bot: e.bot, surface: e.surface, hits: e.hits,
       statuses: e.statuses, verifiedStatuses: e.vStatuses, served, refused, outcomeBasis,
-      outcome: outcomeBasis === "impostor-only" ? "impostor-only"
+      outcome: (outcomeBasis === "impostor-only" || outcomeBasis === "outside-range-only") ? outcomeBasis
              : (refused === 0 ? "served" : (served === 0 ? "refused" : "mixed")),
       topPaths: [...e.paths.entries()].sort((a, b) => b[1] - a[1]).slice(0, MAX_PATHS)
         .map(([p, n]) => ({ path: p, hits: n })),
       distinctPaths: e.paths.size,
       distinctIps: e.ips.size,
       verified: e.verified, impostor: e.impostor, unverifiable: e.unverifiable,
+      verifiedBy: { rdns: e.byRdns, range: e.byRange },
+      rangeMiss: e.rangeMiss,
       impostorIps: impostorIps.slice(0, 5),
       ipRows: [...e.ips.entries()].map(([ip, v]) => ({ ip, n: v.n, status: v.status, why: v.why })),
       whyUnverifiable: e.verified === 0 && e.impostor === 0 ? e.whyUnverifiable : null,
@@ -278,15 +298,26 @@ function reconcile(probeBots, logBots) {
     const probeSays = p.ok ? "served" : "refused";
 
     // Only impostors arrived, so we have no evidence about the operator itself.
-    if (l.outcome === "impostor-only") {
-      rows.push({ bot: p.name, surface: p.surface, probe: probeSays, log: "only impostors arrived",
+    if (l.outcome === "impostor-only" || l.outcome === "outside-range-only") {
+      // The wording follows the evidence. "only impostors arrived" is an
+      // accusation, and outside-range-only is not one: it means every request
+      // came from an address the operator does not list, which can be a scraper
+      // or address space added since we fetched the list.
+      const onlyOdd = l.outcome === "outside-range-only";
+      rows.push({ bot: p.name, surface: p.surface, probe: probeSays,
+        log: onlyOdd ? "only unlisted addresses arrived" : "only impostors arrived",
         agreement: "no-log-evidence", basis: l.outcomeBasis, hits: l.hits,
         verified: 0, impostor: l.impostor,
         note: "Every request under this name came from outside " + l.bot + "'s published range, so the "
             + "real crawler did not visit in this window. We will not read a scraper's success as yours.",
-        impostorNote: l.impostor + (l.impostor === 1 ? " request claimed" : " requests claimed")
-            + " to be " + l.bot + " and none of them were. "
-            + "Addresses seen: " + l.impostorIps.join(", ") + "." });
+        impostorNote: (() => {
+          const n = (l.impostor || 0) + (l.rangeMiss || 0);
+          return n + (n === 1 ? " request claimed" : " requests claimed")
+            + " to be " + l.bot + (onlyOdd
+              ? " from an address " + l.bot + "'s operator does not list. "
+              : " and none of them were. ")
+            + "Addresses seen: " + (l.impostorIps || []).join(", ") + ".";
+        })() });
       unseen++;
       continue;
     }
@@ -314,10 +345,16 @@ function reconcile(probeBots, logBots) {
     else if (agreement === "contradicted") contradict++;
 
     // Impostor traffic is a separate finding, never a softener for the reading above.
-    const impostorNote = l.impostor > 0
-      ? l.impostor + (l.impostor === 1 ? " further request claimed" : " further requests claimed")
+    // Keyed on the unlisted count, not the impostor count. The wording already
+    // described exactly this case, and leaving it on l.impostor meant the
+    // addresses stopped being named the moment a range miss stopped being
+    // called an impostor: the rename would have quietly cost the finding.
+    const odd = (l.rangeMiss || 0) + (l.impostor || 0);
+    const impostorNote = odd > 0
+      ? odd + (odd === 1 ? " further request claimed" : " further requests claimed")
         + " to be " + l.bot + " from an address outside its published range. "
-        + "That is someone else scraping you under a name you may have chosen to allow."
+        + "That is someone else scraping you under a name you may have chosen to allow, "
+        + "or address space the operator has added since we last fetched their list."
       : null;
 
     rows.push({ bot: p.name, surface: p.surface, probe: probeSays, log: logSays,
