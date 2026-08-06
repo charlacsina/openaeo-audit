@@ -4,11 +4,11 @@
 // No LLM, no network: everything here is derived from the input.
 "use strict";
 
-const AI_BOTS = [
-  "GPTBot", "OAI-SearchBot", "ChatGPT-User",
-  "ClaudeBot", "Claude-SearchBot", "Claude-User",
-  "PerplexityBot", "Google-Extended", "Bingbot", "Applebot",
-];
+// Which crawlers we name in a generated robots.txt. This list used to live here
+// as a literal, and in six other places besides, which is how they drifted apart:
+// this file named ten agents while the site's own robots.txt named eighteen and
+// nobody had decided that. It is now generated from one registry.
+const AI_BOTS = require("./crawlers.json").agents.map(a => a.agent);
 
 function cleanDomain(d) {
   return String(d || "").trim().toLowerCase()

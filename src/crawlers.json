@@ -1,0 +1,76 @@
+{
+  "$comment": "Generated from the OpenAEO crawler registry. Do not edit by hand; regenerate with tools/gen-robots.py in the site repo.",
+  "last_reviewed": "2026-08-06",
+  "agents": [
+    {
+      "agent": "GPTBot",
+      "operator": "OpenAI",
+      "purpose": "training",
+      "docs": "https://platform.openai.com/docs/bots",
+      "tier": "tier1"
+    },
+    {
+      "agent": "OAI-SearchBot",
+      "operator": "OpenAI",
+      "purpose": "search",
+      "docs": "https://platform.openai.com/docs/bots",
+      "tier": "tier1"
+    },
+    {
+      "agent": "ChatGPT-User",
+      "operator": "OpenAI",
+      "purpose": "user_fetch",
+      "docs": "https://platform.openai.com/docs/bots",
+      "tier": "listed"
+    },
+    {
+      "agent": "ClaudeBot",
+      "operator": "Anthropic",
+      "purpose": "training",
+      "docs": "https://support.anthropic.com/en/articles/8896518",
+      "tier": "tier1"
+    },
+    {
+      "agent": "Claude-SearchBot",
+      "operator": "Anthropic",
+      "purpose": "search",
+      "docs": "https://support.anthropic.com/en/articles/8896518",
+      "tier": "tier1"
+    },
+    {
+      "agent": "Claude-User",
+      "operator": "Anthropic",
+      "purpose": "user_fetch",
+      "docs": "https://support.anthropic.com/en/articles/8896518",
+      "tier": "listed"
+    },
+    {
+      "agent": "PerplexityBot",
+      "operator": "Perplexity",
+      "purpose": "search",
+      "docs": "https://docs.perplexity.ai/guides/bots",
+      "tier": "tier1"
+    },
+    {
+      "agent": "Google-Extended",
+      "operator": "Google",
+      "purpose": "training",
+      "docs": "https://developers.google.com/search/docs/crawling-indexing/google-special-case-crawlers",
+      "tier": "policy-token"
+    },
+    {
+      "agent": "Bingbot",
+      "operator": "Microsoft",
+      "purpose": "search",
+      "docs": "https://www.bing.com/webmasters/help/which-crawlers-does-bing-use-8c184ec0",
+      "tier": "tier1"
+    },
+    {
+      "agent": "Applebot",
+      "operator": "Apple",
+      "purpose": "search",
+      "docs": "https://support.apple.com/en-us/119829",
+      "tier": "tier1"
+    }
+  ]
+}
